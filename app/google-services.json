@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "915214219336",
+    "project_id": "com-hackerai-mybudget-1b0c2",
+    "storage_bucket": "com-hackerai-mybudget-1b0c2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:915214219336:android:2bc081a3cd47afe739c07d",
+        "android_client_info": {
+          "package_name": "com.hackerai.mybudget"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJNZet3Q_UanqyMKCxu0pf_pHZBulxTD8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
