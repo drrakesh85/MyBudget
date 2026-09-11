@@ -1,26 +1,44 @@
 {
   "project_info": {
-    "project_number": "915214219336",
-    "project_id": "com-hackerai-mybudget-1b0c2",
-    "storage_bucket": "com-hackerai-mybudget-1b0c2.firebasestorage.app"
+    "project_number": "499044597436",
+    "project_id": "com-hackerai-myapplicati-740b5",
+    "storage_bucket": "com-hackerai-myapplicati-740b5.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:915214219336:android:2bc081a3cd47afe739c07d",
+        "mobilesdk_app_id": "1:499044597436:android:3305943eae616703469ab9",
         "android_client_info": {
-          "package_name": "com.hackerai.mybudget"
+          "package_name": "com.hackerai.myapplication"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "499044597436-fab95g3i8cninpi6dvf5bkfk6ff0aga0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hackerai.myapplication",
+            "certificate_hash": "49d65f95c72fbbd8ac64928004b8e5961c11a281"
+          }
+        },
+        {
+          "client_id": "499044597436-rk8lo52s3agemmlbgkfm4u3vsdhtre5v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyBJNZet3Q_UanqyMKCxu0pf_pHZBulxTD8"
+          "current_key": "AIzaSyBk65Mk9tWbTMzkHby1UJ2nxDo8VR29-54"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "499044597436-rk8lo52s3agemmlbgkfm4u3vsdhtre5v.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

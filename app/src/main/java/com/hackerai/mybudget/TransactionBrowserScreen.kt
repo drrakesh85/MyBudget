@@ -1,5 +1,6 @@
 package com.hackerai.mybudget
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,8 +17,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hackerai.mybudget.data.Expense
+import java.text.NumberFormat
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -43,10 +49,20 @@ fun TransactionBrowserScreen(
 
     val datePickerState = rememberDateRangePickerState()
 
+    val title = remember(selectedAccount, dateRange) {
+        val accPart = selectedAccount ?: "All Accounts"
+        val datePart = if (dateRange.first != null && dateRange.second != null) {
+            val start = Instant.ofEpochMilli(dateRange.first!!).atZone(ZoneId.systemDefault()).toLocalDate()
+            val end = Instant.ofEpochMilli(dateRange.second!!).atZone(ZoneId.systemDefault()).toLocalDate()
+            ": ${start.format(DateTimeFormatter.ofPattern("dd-MM"))} - ${end.format(DateTimeFormatter.ofPattern("dd-MM"))}"
+        } else ""
+        "$accPart$datePart"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Browse Transactions", color = Color.White) },
+                title = { Text(title, color = Color.White, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
@@ -61,7 +77,7 @@ fun TransactionBrowserScreen(
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+        Column(modifier = Modifier.padding(padding).fillMaxSize().background(Color.White)) {
             // Quick Date Filters
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -75,26 +91,7 @@ fun TransactionBrowserScreen(
                 }
             }
 
-            // Applied Filters Chips
-            FlowRow(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (selectedAccount != null) {
-                    FilterTag("Acc: $selectedAccount") { viewModel.filterByAccount(null) }
-                }
-                if (selectedCategory != null) {
-                    FilterTag("Cat: $selectedCategory") { viewModel.filterByCategory(null) }
-                }
-                if (selectedType != null) {
-                    FilterTag("Type: $selectedType") { viewModel.filterByType(null) }
-                }
-                if (dateRange.first != null) {
-                    FilterTag("Date Filter Active") { viewModel.setDateRange(null, null) }
-                }
-            }
-
-            HorizontalDivider()
+            HorizontalDivider(thickness = 0.5.dp)
 
             when (val state = uiState) {
                 is BudgetUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -110,7 +107,7 @@ fun TransactionBrowserScreen(
                         val categoryMatches = selectedCategory == null || expense.category == selectedCategory
                         val typeMatches = selectedType == null || expense.transactionType == selectedType
 
-                        dateMatches && accountMatches && categoryMatches && typeMatches
+                        !expense.isDeleted && dateMatches && accountMatches && categoryMatches && typeMatches
                     }.sortedByDescending { parseDate(it.date) ?: 0L }
 
                     if (filteredList.isEmpty()) {
@@ -118,16 +115,23 @@ fun TransactionBrowserScreen(
                             Text("No transactions found")
                         }
                     } else {
+                        val grouped = filteredList.groupBy { it.date }
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(filteredList) { expense ->
-                                ExpenseItem(expense) {
-                                    viewModel.editExpense(expense)
-                                    onBack()
+                            grouped.forEach { (date, items) ->
+                                item {
+                                    DateHeader(date)
+                                }
+                                items(items) { expense ->
+                                    DetailedExpenseItem(expense) {
+                                        viewModel.editExpense(expense)
+                                        onBack()
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                else -> {}
             }
         }
 
@@ -162,6 +166,73 @@ fun TransactionBrowserScreen(
             }
         }
     }
+}
+
+@Composable
+fun DateHeader(dateStr: String) {
+    val formatted = remember(dateStr) {
+        try {
+            val date = LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("dd-MM-yyyy"))
+            date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy EEE")).uppercase()
+        } catch (e: Exception) {
+            dateStr
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFE0E0E0))
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Text(text = formatted, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+    }
+}
+
+@Composable
+fun DetailedExpenseItem(expense: Expense, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } },
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "${expense.category}:${expense.subcategory}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+                if (expense.time.isNotBlank()) {
+                    Text(text = expense.time, fontSize = 11.sp, color = Color.LightGray)
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = formatBrowserAmount(expense.amount),
+                    color = if (expense.amount < 0) Color.Red else Color(0xFF2E7D32),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = expense.status.ifEmpty { "clear" },
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+            }
+        }
+        HorizontalDivider(modifier = Modifier.padding(top = 8.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
+    }
+}
+
+private fun formatBrowserAmount(amount: Double): String {
+    val formatter = NumberFormat.getCurrencyInstance(Locale("en", "IN"))
+    return formatter.format(amount).replace("₹", "").trim()
 }
 
 @Composable

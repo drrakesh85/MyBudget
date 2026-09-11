@@ -49,6 +49,7 @@ fun ExpenseListScreen(
     val subcategories by viewModel.subcategories.collectAsState()
     val tags by viewModel.tags.collectAsState()
     val tagMap by viewModel.tagMap.collectAsState()
+    val payeeMap by viewModel.payeeMap.collectAsState()
     val categorySubcategoryMap by viewModel.categorySubcategoryMap.collectAsState()
     val currentBalance by viewModel.currentBalance.collectAsState()
     val summaryData by viewModel.summaryData.collectAsState()
@@ -63,6 +64,7 @@ fun ExpenseListScreen(
             subcategories = subcategories,
             tags = tags,
             tagMap = tagMap,
+            payeeMap = payeeMap,
             categorySubcategoryMap = categorySubcategoryMap,
             onSave = { viewModel.saveReviewedExpense(it) },
             onCancel = { viewModel.cancelReview() }

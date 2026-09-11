@@ -95,12 +95,12 @@ object TransactionParser {
                 date = formattedDate,
                 time = formattedTime,
                 amount = amount,
-                category = "Imported",
+                category = "",
                 subcategory = "",
                 paymentMethod = bankName,
                 description = body.take(100), // Increased to see more context
                 refCheckNo = "",
-                payeePayer = extractedPayee ?: bankName,
+                payeePayer = "",
                 status = "unclear",
                 receiptPicture = "",
                 account = accountSnippet ?: bankName, // Use snippet if found, otherwise sender ID

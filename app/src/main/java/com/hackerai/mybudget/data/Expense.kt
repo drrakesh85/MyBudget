@@ -26,7 +26,9 @@ data class Expense(
     val rowId: String,
     val typeId: String,
     val transactionType: String = "Expense",
-    val toAccount: String? = null
+    val toAccount: String? = null,
+    val lastModified: Long = System.currentTimeMillis(),
+    val isDeleted: Boolean = false
 ) {
     companion object {
         private val dateFormatter = DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.getDefault())
@@ -53,7 +55,9 @@ data class Expense(
             splitTotal = "",
             rowId = "new_${System.currentTimeMillis()}",
             typeId = "",
-            transactionType = "Expense"
+            transactionType = "Expense",
+            lastModified = System.currentTimeMillis(),
+            isDeleted = false
         )
     }
 }

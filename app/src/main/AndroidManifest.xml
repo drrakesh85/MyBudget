@@ -4,6 +4,11 @@
 
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <queries>
+        <package android:name="com.dropbox.android" />
+    </queries>
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
     <application
@@ -20,6 +25,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.MyBudget">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -27,6 +33,32 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Dropbox AuthActivity -->
+        <activity
+            android:name="com.dropbox.core.android.AuthActivity"
+            android:configChanges="orientation|keyboard"
+            android:launchMode="singleTask"
+            android:exported="true">
+            <intent-filter>
+                <!-- Scheme must match db-APP_KEY exactly -->
+                <data android:scheme="db-fjahhhwb6pli7c6" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".SmsReceiver"
             android:exported="true"

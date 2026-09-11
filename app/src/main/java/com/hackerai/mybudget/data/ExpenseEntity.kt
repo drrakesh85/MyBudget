@@ -27,7 +27,9 @@ data class ExpenseEntity(
     val transactionType: String,
     val toAccount: String?,
     val isPendingReview: Boolean = false,
-    val isDiscarded: Boolean = false
+    val isDiscarded: Boolean = false,
+    val lastModified: Long = System.currentTimeMillis(),
+    val isDeleted: Boolean = false
 )
 
 fun Expense.toEntity(isPendingReview: Boolean = false, isDiscarded: Boolean = false) = ExpenseEntity(
@@ -53,7 +55,9 @@ fun Expense.toEntity(isPendingReview: Boolean = false, isDiscarded: Boolean = fa
     transactionType = transactionType,
     toAccount = toAccount,
     isPendingReview = isPendingReview,
-    isDiscarded = isDiscarded
+    isDiscarded = isDiscarded,
+    lastModified = lastModified,
+    isDeleted = isDeleted
 )
 
 fun ExpenseEntity.toExpense() = Expense(
@@ -77,5 +81,7 @@ fun ExpenseEntity.toExpense() = Expense(
     rowId = rowId,
     typeId = typeId,
     transactionType = transactionType,
-    toAccount = toAccount
+    toAccount = toAccount,
+    lastModified = lastModified,
+    isDeleted = isDeleted
 )

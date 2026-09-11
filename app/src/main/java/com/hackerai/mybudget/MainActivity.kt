@@ -177,8 +177,13 @@ class MainActivity : ComponentActivity() {
                                     currentScreen = Screen.EXPENSE_LIST
                                 },
                                 onGoogleDriveSync = {
-                                    val client = expenseViewModel.getGoogleSignInClient()
-                                    googleSignInLauncher.launch(client.signInIntent)
+                                    val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
+                                    if (lastAccount != null) {
+                                        startGoogleDriveSync(lastAccount)
+                                    } else {
+                                        val client = expenseViewModel.getGoogleSignInClient()
+                                        googleSignInLauncher.launch(client.signInIntent)
+                                    }
                                 },
                                 onDropboxSync = {
                                     expenseViewModel.startDropboxSync()
@@ -266,6 +271,7 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
+        expenseViewModel.refreshGoogleDriveConnection()
         expenseViewModel.syncWithGoogle(account)
         Toast.makeText(this, "Syncing with Google Drive...", Toast.LENGTH_SHORT).show()
     }

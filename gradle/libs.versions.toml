@@ -16,6 +16,11 @@ room = "2.7.1"
 securityCrypto = "1.0.0"
 ksp = "2.2.10-2.0.2"
 desugar_jdk_libs = "2.1.5"
+playServicesAuth = "21.3.0"
+googleApiClientAndroid = "2.7.0"
+googleServicesDrive = "v3-rev20241027-2.0.0"
+googleHttpClientAndroid = "1.45.0"
+dropbox = "7.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -41,6 +46,12 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugar_jdk_libs" }
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version.ref = "googleApiClientAndroid" }
+google-api-services-drive = { group = "com.google.apis", name = "google-api-services-drive", version.ref = "googleServicesDrive" }
+google-http-client-android = { group = "com.google.http-client", name = "google-http-client-android", version.ref = "googleHttpClientAndroid" }
+dropbox-core-sdk = { group = "com.dropbox.core", name = "dropbox-core-sdk", version.ref = "dropbox" }
+dropbox-android-sdk = { group = "com.dropbox.core", name = "dropbox-android-sdk", version.ref = "dropbox" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

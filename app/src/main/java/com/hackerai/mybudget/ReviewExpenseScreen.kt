@@ -23,6 +23,7 @@ fun ReviewExpenseScreen(
     subcategories: List<String>,
     tags: List<String> = emptyList(),
     tagMap: Map<String, Pair<String, String>> = emptyMap(),
+    payeeMap: Map<String, Pair<String, String>> = emptyMap(),
     categorySubcategoryMap: Map<String, List<String>> = emptyMap(),
     onSave: (Expense) -> Unit,
     onCancel: () -> Unit
@@ -40,6 +41,27 @@ fun ReviewExpenseScreen(
     var toAccount by remember { mutableStateOf(expense.toAccount ?: "") }
     var payeePayer by remember { mutableStateOf(expense.payeePayer) }
     var transactionType by remember { mutableStateOf(expense.transactionType) }
+
+    // Cleanup: If the expense comes with "Imported" as a category, clear it.
+    // Also clear the Payee if it's an auto-generated sender ID from SMS.
+    LaunchedEffect(Unit) {
+        if (category == "Imported") {
+            category = ""
+        }
+        if (expense.tag == "SMS" && expense.status == "unclear") {
+            payeePayer = ""
+        }
+        
+        // Trigger Transaction Memory on initial load if category is blank
+        if (category.isBlank() && payeePayer.isNotBlank()) {
+            payeeMap[payeePayer]?.let { (cat, sub) ->
+                if (cat != "Imported") {
+                    category = cat
+                    subcategory = sub
+                }
+            }
+        }
+    }
 
     val transactionTypes = listOf("Expense", "Income", "Transfer")
     
@@ -127,7 +149,18 @@ fun ReviewExpenseScreen(
                 AutocompleteField(
                     label = "Payee/Payer",
                     value = payeePayer,
-                    onValueChange = { payeePayer = it },
+                    onValueChange = { newPayee -> 
+                        payeePayer = newPayee
+                        if (newPayee.isNotBlank()) {
+                            // Transaction Memory: Auto-fill category/subcategory based on Payee
+                            payeeMap[newPayee]?.let { (cat, sub) ->
+                                if (cat != "Imported") {
+                                    if (category.isBlank()) category = cat
+                                    if (subcategory.isBlank()) subcategory = sub
+                                }
+                            }
+                        }
+                    },
                     suggestions = payees
                 )
 

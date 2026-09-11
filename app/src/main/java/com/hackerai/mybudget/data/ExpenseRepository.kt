@@ -27,15 +27,17 @@ class ExpenseRepository(
     }
 
     suspend fun relocateTransactions(oldAccount: String, newAccount: String) = withContext(Dispatchers.IO) {
-        expenseDao.relocateTransactions(oldAccount, newAccount)
+        expenseDao.relocateTransactions(oldAccount, newAccount, System.currentTimeMillis())
     }
 
     suspend fun saveExpense(expense: Expense, isPendingReview: Boolean = false, isDiscarded: Boolean = false) = withContext(Dispatchers.IO) {
-        expenseDao.insert(expense.toEntity(isPendingReview, isDiscarded))
+        val updated = expense.copy(lastModified = System.currentTimeMillis())
+        expenseDao.insert(updated.toEntity(isPendingReview, isDiscarded))
     }
 
     suspend fun approveExpense(expense: Expense) = withContext(Dispatchers.IO) {
-        expenseDao.insert(expense.toEntity(isPendingReview = false, isDiscarded = false))
+        val updated = expense.copy(lastModified = System.currentTimeMillis())
+        expenseDao.insert(updated.toEntity(isPendingReview = false, isDiscarded = false))
     }
 
     suspend fun exists(rowId: String): Boolean = withContext(Dispatchers.IO) {
@@ -43,7 +45,7 @@ class ExpenseRepository(
     }
 
     suspend fun deleteById(rowId: String) = withContext(Dispatchers.IO) {
-        expenseDao.deleteById(rowId)
+        expenseDao.deleteById(rowId, System.currentTimeMillis())
     }
 
     suspend fun markAsDiscarded(rowId: String) = withContext(Dispatchers.IO) {
@@ -103,16 +105,61 @@ class ExpenseRepository(
         expenseDao.getPendingReviewExpenses().map { it.toExpense() }
     }
 
-    private suspend fun ensureCsvImported() {
-        if (expenseDao.count() > 0) return
+    suspend fun importFromCsv() = withContext(Dispatchers.IO) {
         try {
             val inputStream = context.assets.open("expensemanager.csv")
             val csvExpenses = CsvParser.parse(inputStream)
             if (csvExpenses.isNotEmpty()) {
-                expenseDao.insertAll(csvExpenses.map { it.toEntity(isPendingReview = false) })
+                val now = System.currentTimeMillis()
+                expenseDao.insertAll(csvExpenses.map { it.copy(lastModified = now).toEntity(isPendingReview = false) })
             }
         } catch (e: Exception) {
-            Log.w("ExpenseRepository", "CSV import failed or asset missing", e)
+            Log.w("ExpenseRepository", "CSV import failed", e)
         }
+    }
+
+    suspend fun getAllForSync(): List<Expense> = withContext(Dispatchers.IO) {
+        expenseDao.getAllForSync().map { it.toExpense() }
+    }
+
+    suspend fun insertSyncData(expenses: List<Expense>) = withContext(Dispatchers.IO) {
+        expenseDao.insertAll(expenses.map { it.toEntity() })
+    }
+
+    suspend fun generateCsvData(): String = withContext(Dispatchers.IO) {
+        val expenses = expenseDao.getAllExpenses().map { it.toExpense() }
+        val sb = StringBuilder()
+        
+        // Header matching your source CSV format
+        sb.append("Date,Amount,Category,Subcategory,Payment Mode,Description,Ref/Check No,Payee/Payer,Status,Receipt Picture,Account,Tag,Tax,Quantity,Unit,Split Total,Row ID,Type ID,Transaction Type,To Account\n")
+        
+        expenses.forEach { exp ->
+            val fields = listOf(
+                exp.date,
+                exp.amount.toString(),
+                exp.category,
+                exp.subcategory,
+                exp.paymentMethod,
+                exp.description,
+                exp.refCheckNo,
+                exp.payeePayer,
+                exp.status,
+                exp.receiptPicture,
+                exp.account,
+                exp.tag,
+                exp.tax,
+                exp.quantity.toString(),
+                exp.unit,
+                exp.splitTotal,
+                exp.rowId,
+                exp.typeId,
+                exp.transactionType,
+                exp.toAccount ?: ""
+            ).map { field ->
+                "\"${field.replace("\"", "\"\"")}\""
+            }
+            sb.append(fields.joinToString(",")).append("\n")
+        }
+        sb.toString()
     }
 }

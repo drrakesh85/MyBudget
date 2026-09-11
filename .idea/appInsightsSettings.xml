@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.hackerai.mybudget" />
-                  <option name="mobileSdkAppId" value="1:915214219336:android:2bc081a3cd47afe739c07d" />
-                  <option name="projectId" value="com-hackerai-mybudget-1b0c2" />
-                  <option name="projectNumber" value="915214219336" />
+                  <option name="appId" value="com.hackerai.myapplication" />
+                  <option name="mobileSdkAppId" value="1:499044597436:android:3305943eae616703469ab9" />
+                  <option name="projectId" value="com-hackerai-myapplicati-740b5" />
+                  <option name="projectNumber" value="499044597436" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

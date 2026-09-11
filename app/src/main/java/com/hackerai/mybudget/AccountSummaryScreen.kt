@@ -30,7 +30,8 @@ import java.util.*
 fun AccountSummaryScreen(
     viewModel: ExpenseViewModel = viewModel(),
     onBack: () -> Unit,
-    onManageAccounts: () -> Unit
+    onManageAccounts: () -> Unit,
+    onNavigateToBrowser: () -> Unit = {}
 ) {
     val selectedAccountName by viewModel.selectedAccount.collectAsState()
     val fullAccounts by viewModel.fullAccounts.collectAsState()
@@ -146,7 +147,11 @@ fun AccountSummaryScreen(
                 }
 
                 item {
-                    PeriodActivityCard(timeFilter, filteredExpenses)
+                    PeriodActivityCard(timeFilter, filteredExpenses) {
+                        viewModel.setDateRange(currentRange.first?.atStartOfDay(java.time.ZoneId.systemDefault())?.toInstant()?.toEpochMilli(),
+                            currentRange.second?.atTime(23, 59, 59)?.atZone(java.time.ZoneId.systemDefault())?.toInstant()?.toEpochMilli())
+                        onNavigateToBrowser()
+                    }
                 }
 
                 if (selectedAccountName == null) {
@@ -270,11 +275,11 @@ fun AccountInfoRow(label: String, value: String) {
 }
 
 @Composable
-fun PeriodActivityCard(filter: String, filteredExpenses: List<Expense>) {
+fun PeriodActivityCard(filter: String, filteredExpenses: List<Expense>, onClick: () -> Unit) {
     val income = filteredExpenses.filter { it.amount > 0 }.sumOf { it.amount }
     val expense = filteredExpenses.filter { it.amount < 0 }.sumOf { it.amount }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

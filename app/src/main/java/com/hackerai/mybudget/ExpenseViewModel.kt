@@ -52,6 +52,15 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     private val _isDropboxConnected = MutableStateFlow(dropboxHelper.isConnected())
     val isDropboxConnected: StateFlow<Boolean> = _isDropboxConnected.asStateFlow()
 
+    private val _isGoogleDriveConnected = MutableStateFlow(googleDriveHelper.isDriveConnected())
+    val isGoogleDriveConnected: StateFlow<Boolean> = _isGoogleDriveConnected.asStateFlow()
+
+    private val _googleDriveLastSuccessfulSyncMillis = MutableStateFlow(
+        googleDriveHelper.getLastSuccessfulSyncMillis().takeIf { it > 0L }
+    )
+    val googleDriveLastSuccessfulSyncMillis: StateFlow<Long?> =
+        _googleDriveLastSuccessfulSyncMillis.asStateFlow()
+
     private val _currentBalance = MutableStateFlow(0.0)
     val currentBalance: StateFlow<Double> = _currentBalance.asStateFlow()
 
@@ -296,6 +305,10 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 val merged = syncManager.mergeExpenses(remoteExpenses)
                 googleDriveHelper.uploadSyncData(account, merged)
                 loadExpenses()
+                val syncedAt = System.currentTimeMillis()
+                googleDriveHelper.saveLastSuccessfulSyncMillis(syncedAt)
+                _googleDriveLastSuccessfulSyncMillis.value = syncedAt
+                _isGoogleDriveConnected.value = true
                 _googleDriveSyncState.value = SyncState.Success("Google Drive sync complete")
             } catch (e: GoogleDriveAuthException) {
                 Log.e(TAG, "Google Drive authorization failed", e)
@@ -317,6 +330,10 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     fun getGoogleSignInClient() = googleDriveHelper.getGoogleSignInClient()
 
     fun hasGoogleDrivePermission(account: GoogleSignInAccount) = googleDriveHelper.hasDrivePermission(account)
+
+    fun refreshGoogleDriveConnection() {
+        _isGoogleDriveConnected.value = googleDriveHelper.isDriveConnected()
+    }
 
     fun startDropboxSync() {
         dropboxHelper.startAuth()

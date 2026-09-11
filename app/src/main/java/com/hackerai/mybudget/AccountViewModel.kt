@@ -20,6 +20,9 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     }
     val accounts: StateFlow<List<Account>> = repository.accounts
 
+    private val _isGrouped = MutableStateFlow(false)
+    val isGrouped: StateFlow<Boolean> = _isGrouped.asStateFlow()
+
     data class AccountBalance(
         val account: Account,
         val income: Double,
@@ -31,13 +34,28 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         accounts,
         expenseRepository.allExpensesFlow()
     ) { accountList, expenseList ->
-        accountList.map { account ->
+        accountList.filter { !it.isHidden }.map { account ->
             val accountExpenses = expenseList.filter { it.account == account.nickName }
             val income = accountExpenses.filter { it.transactionType == "Income" }.sumOf { it.amount }
             val expense = accountExpenses.filter { it.transactionType == "Expense" }.sumOf { it.amount }
             AccountBalance(account, income, expense, income + expense)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun toggleGrouping() {
+        _isGrouped.value = !_isGrouped.value
+    }
+
+    fun toggleAccountVisibility(accountId: String) {
+        val account = accounts.value.find { it.id == accountId } ?: return
+        val updated = when (account) {
+            is SavingAccount -> account.copy(isHidden = !account.isHidden)
+            is LoanAccount -> account.copy(isHidden = !account.isHidden)
+            is CreditCardAccount -> account.copy(isHidden = !account.isHidden)
+            is CashAccount -> account.copy(isHidden = !account.isHidden)
+        }
+        repository.addAccount(updated)
+    }
 
     fun moveAccount(fromIndex: Int, toIndex: Int) {
         val list = accounts.value.toMutableList()

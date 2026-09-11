@@ -38,6 +38,9 @@ class GoogleDriveHelper(private val context: Context) {
     private val syncFileName = "sync_data.json"
 
     private val driveScope = Scope(DriveScopes.DRIVE_APPDATA)
+    private val syncPrefs by lazy {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     fun getGoogleSignInClient() = GoogleSignIn.getClient(
         context,
@@ -50,6 +53,23 @@ class GoogleDriveHelper(private val context: Context) {
 
     fun hasDrivePermission(account: GoogleSignInAccount): Boolean {
         return GoogleSignIn.hasPermissions(account, driveScope)
+    }
+
+    fun getLastSignedInAccount(): GoogleSignInAccount? {
+        return GoogleSignIn.getLastSignedInAccount(context)
+    }
+
+    fun isDriveConnected(): Boolean {
+        val account = getLastSignedInAccount() ?: return false
+        return hasDrivePermission(account)
+    }
+
+    fun getLastSuccessfulSyncMillis(): Long {
+        return syncPrefs.getLong(KEY_LAST_SUCCESSFUL_SYNC, 0L)
+    }
+
+    fun saveLastSuccessfulSyncMillis(millis: Long) {
+        syncPrefs.edit().putLong(KEY_LAST_SUCCESSFUL_SYNC, millis).apply()
     }
 
     private fun getDriveService(account: GoogleSignInAccount): Drive {
@@ -156,5 +176,7 @@ class GoogleDriveHelper(private val context: Context) {
 
     companion object {
         private const val TAG = "GoogleDriveHelper"
+        private const val PREFS_NAME = "google_drive_sync_prefs"
+        private const val KEY_LAST_SUCCESSFUL_SYNC = "last_successful_sync_millis"
     }
 }

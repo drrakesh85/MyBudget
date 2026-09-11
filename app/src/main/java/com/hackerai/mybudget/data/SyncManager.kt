@@ -7,8 +7,9 @@ class SyncManager(private val repository: ExpenseRepository) {
     /**
      * Merges a list of remote expenses with the local database.
      * Implements "Last Write Wins" based on lastModified timestamp.
+     * Handles deletion tombstones (isDeleted=true).
      */
-    suspend fun mergeWithRemote(remoteExpenses: List<Expense>): List<Expense> {
+    suspend fun mergeExpenses(remoteExpenses: List<Expense>): List<Expense> {
         val localExpenses = repository.getAllForSync()
         val localMap = localExpenses.associateBy { it.rowId }
         val remoteMap = remoteExpenses.associateBy { it.rowId }
@@ -25,8 +26,14 @@ class SyncManager(private val repository: ExpenseRepository) {
                     // Both exist, take the one with the later timestamp
                     if (remote.lastModified > local.lastModified) remote else local
                 }
-                local != null -> local
-                remote != null -> remote
+                local != null -> {
+                    // Local only
+                    local
+                }
+                remote != null -> {
+                    // Remote only
+                    remote
+                }
                 else -> null
             }
 
@@ -34,13 +41,8 @@ class SyncManager(private val repository: ExpenseRepository) {
         }
 
         // Save the merged list back to the local database
-        // Use a background dispatchers if needed, repository methods already handle it.
-        mergedList.forEach { expense ->
-            // We use a lower level insert to bypass some repository logic if needed,
-            // but for now repository.saveExpense is fine, although it might update lastModified.
-            // Actually, we should use a direct insert that preserves the incoming lastModified.
-            repository.saveExpense(expense) 
-        }
+        // We use a specialized sync insert that preserves the incoming fields exactly.
+        repository.insertSyncData(mergedList)
 
         return mergedList
     }

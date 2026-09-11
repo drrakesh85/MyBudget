@@ -8,13 +8,13 @@ import androidx.room.Query
 @Dao
 interface ExpenseDao {
 
-    @Query("SELECT * FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 ORDER BY date DESC")
+    @Query("SELECT * FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC")
     fun getAllExpensesFlow(): kotlinx.coroutines.flow.Flow<List<ExpenseEntity>>
 
-    @Query("SELECT * FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 ORDER BY date DESC")
+    @Query("SELECT * FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC")
     suspend fun getAllExpenses(): List<ExpenseEntity>
 
-    @Query("SELECT * FROM expenses WHERE isPendingReview = 1 AND isDiscarded = 0 ORDER BY date DESC")
+    @Query("SELECT * FROM expenses WHERE isPendingReview = 1 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC")
     suspend fun getPendingReviewExpenses(): List<ExpenseEntity>
 
     @Query("SELECT COUNT(*) FROM expenses")
@@ -35,11 +35,11 @@ interface ExpenseDao {
     @Query("SELECT COUNT(*) FROM expenses WHERE account = :accountName")
     suspend fun countByAccount(accountName: String): Int
 
-    @Query("UPDATE expenses SET account = :newAccountName WHERE account = :oldAccountName")
-    suspend fun relocateTransactions(oldAccountName: String, newAccountName: String)
+    @Query("UPDATE expenses SET account = :newAccountName, lastModified = :timestamp WHERE account = :oldAccountName")
+    suspend fun relocateTransactions(oldAccountName: String, newAccountName: String, timestamp: Long)
 
-    @Query("DELETE FROM expenses WHERE rowId = :rowId")
-    suspend fun deleteById(rowId: String)
+    @Query("UPDATE expenses SET isDeleted = 1, lastModified = :timestamp WHERE rowId = :rowId")
+    suspend fun deleteById(rowId: String, timestamp: Long)
 
     @Query("UPDATE expenses SET category = :newName WHERE category = :oldName AND transactionType = :type")
     suspend fun renameCategory(oldName: String, newName: String, type: String)
@@ -52,4 +52,7 @@ interface ExpenseDao {
 
     @Query("UPDATE expenses SET account = :newName WHERE account = :oldName")
     suspend fun renameAccount(oldName: String, newName: String)
+
+    @Query("SELECT * FROM expenses")
+    suspend fun getAllForSync(): List<ExpenseEntity>
 }
