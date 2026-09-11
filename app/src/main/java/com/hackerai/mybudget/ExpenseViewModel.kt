@@ -3,14 +3,18 @@ package com.hackerai.mybudget
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.hackerai.mybudget.data.Expense
-import com.hackerai.mybudget.data.ExpenseRepository
-import com.hackerai.mybudget.data.ExpenseSummaryCalculator
-import com.hackerai.mybudget.data.SmsRepository
+import com.hackerai.mybudget.data.*
+import android.content.Intent
+import android.util.Log
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 sealed interface BudgetUiState {
     object Loading : BudgetUiState
@@ -18,13 +22,35 @@ sealed interface BudgetUiState {
     data class Error(val message: String) : BudgetUiState
 }
 
+sealed interface SyncState {
+    object Idle : SyncState
+    object Loading : SyncState
+    data class Success(val message: String) : SyncState
+    data class Error(val message: String) : SyncState
+}
+
 class ExpenseViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: ExpenseRepository = (application as MyBudgetApplication).expenseRepository
     private val accountRepository = (application as MyBudgetApplication).accountRepository
     private val smsRepository = SmsRepository(application)
+    private val syncManager = SyncManager(repository)
+    private val googleDriveHelper = GoogleDriveHelper(application)
+    private val dropboxHelper = DropboxHelper(application)
 
     private val _uiState = MutableStateFlow<BudgetUiState>(BudgetUiState.Loading)
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
+
+    private val _dropboxSyncState = MutableStateFlow<SyncState>(SyncState.Idle)
+    val dropboxSyncState: StateFlow<SyncState> = _dropboxSyncState.asStateFlow()
+
+    private val _googleDriveSyncState = MutableStateFlow<SyncState>(SyncState.Idle)
+    val googleDriveSyncState: StateFlow<SyncState> = _googleDriveSyncState.asStateFlow()
+
+    private val _googleDriveRecoverableAuthIntent = MutableStateFlow<Intent?>(null)
+    val googleDriveRecoverableAuthIntent: StateFlow<Intent?> = _googleDriveRecoverableAuthIntent.asStateFlow()
+
+    private val _isDropboxConnected = MutableStateFlow(dropboxHelper.isConnected())
+    val isDropboxConnected: StateFlow<Boolean> = _isDropboxConnected.asStateFlow()
 
     private val _currentBalance = MutableStateFlow(0.0)
     val currentBalance: StateFlow<Double> = _currentBalance.asStateFlow()
@@ -67,17 +93,52 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     private val _tagMap = MutableStateFlow<Map<String, Pair<String, String>>>(emptyMap())
     val tagMap: StateFlow<Map<String, Pair<String, String>>> = _tagMap.asStateFlow()
 
+    private val _payeeMap = MutableStateFlow<Map<String, Pair<String, String>>>(emptyMap())
+    val payeeMap: StateFlow<Map<String, Pair<String, String>>> = _payeeMap.asStateFlow()
+
     private val _editingExpense = MutableStateFlow<Expense?>(null)
     val editingExpense: StateFlow<Expense?> = _editingExpense.asStateFlow()
 
     init {
         // Collect accounts from accountRepository to keep them in global order
+        // and instantly update tabs when accounts are added/hidden
         viewModelScope.launch {
             accountRepository.accounts.collect { accountList ->
-                _accounts.value = accountList.map { it.nickName }
+                _accounts.value = accountList.filter { !it.isHidden }.map { it.nickName }
+            }
+        }
+        
+        // Auto-Discovery: Ensure all accounts in transactions are registered
+        viewModelScope.launch {
+            val expenses = repository.loadExpenses()
+            val uniqueAccountNames = expenses.map { it.account }.filter { it.isNotBlank() }.distinct()
+            val currentNicknames = accountRepository.getUniqueNickNames()
+            
+            uniqueAccountNames.forEach { name ->
+                if (!currentNicknames.contains(name)) {
+                    if (name.contains("Cash", ignoreCase = true) || name.contains("PayTM", ignoreCase = true) || name.contains("Wallet", ignoreCase = true)) {
+                        accountRepository.addAccount(com.hackerai.mybudget.data.CashAccount(UUID.randomUUID().toString(), name))
+                    } else if (name.contains("Card", ignoreCase = true)) {
+                        accountRepository.addAccount(com.hackerai.mybudget.data.CreditCardAccount(UUID.randomUUID().toString(), name, name, "0000", "01/99", 1, 1))
+                    } else {
+                        accountRepository.addAccount(com.hackerai.mybudget.data.SavingAccount(UUID.randomUUID().toString(), name, name, "Auto-Imported", "00000000"))
+                    }
+                }
             }
         }
         loadExpenses()
+    }
+
+    fun importCsv() {
+        viewModelScope.launch {
+            _uiState.value = BudgetUiState.Loading
+            try {
+                repository.importFromCsv()
+                loadExpenses()
+            } catch (e: Exception) {
+                _uiState.value = BudgetUiState.Error(e.message ?: "Failed to import CSV")
+            }
+        }
     }
 
     fun loadExpenses() {
@@ -103,6 +164,15 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         _tagMap.value = expenses.filter { it.tag.isNotBlank() && it.category.isNotBlank() }
             .groupBy { it.tag }
             .mapValues { (_, list) -> 
+                val mostFrequent = list.groupBy { it.category to it.subcategory }
+                    .maxByOrNull { it.value.size }?.key ?: ("" to "")
+                mostFrequent
+            }
+        _payeeMap.value = expenses.filter { 
+            it.payeePayer.isNotBlank() && it.category.isNotBlank() && it.category != "Imported" 
+        }
+            .groupBy { it.payeePayer }
+            .mapValues { (_, list) ->
                 val mostFrequent = list.groupBy { it.category to it.subcategory }
                     .maxByOrNull { it.value.size }?.key ?: ("" to "")
                 mostFrequent
@@ -212,5 +282,95 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.value = BudgetUiState.Error(e.message ?: "Failed to save expense")
             }
         }
+    }
+
+    fun syncWithGoogle(account: GoogleSignInAccount) {
+        viewModelScope.launch {
+            _googleDriveSyncState.value = SyncState.Loading
+            try {
+                if (!googleDriveHelper.hasDrivePermission(account)) {
+                    _googleDriveSyncState.value = SyncState.Error("Google Drive permission was not granted.")
+                    return@launch
+                }
+                val remoteExpenses = googleDriveHelper.downloadSyncData(account)
+                val merged = syncManager.mergeExpenses(remoteExpenses)
+                googleDriveHelper.uploadSyncData(account, merged)
+                loadExpenses()
+                _googleDriveSyncState.value = SyncState.Success("Google Drive sync complete")
+            } catch (e: GoogleDriveAuthException) {
+                Log.e(TAG, "Google Drive authorization failed", e)
+                if (e.recoverableIntent != null) {
+                    _googleDriveRecoverableAuthIntent.value = e.recoverableIntent
+                }
+                _googleDriveSyncState.value = SyncState.Error(e.message ?: "Google Drive authorization failed")
+            } catch (e: Exception) {
+                Log.e(TAG, "Google Drive sync failed", e)
+                _googleDriveSyncState.value = SyncState.Error(e.message ?: "Google Drive sync failed")
+            }
+        }
+    }
+
+    fun clearGoogleDriveRecoverableAuthIntent() {
+        _googleDriveRecoverableAuthIntent.value = null
+    }
+
+    fun getGoogleSignInClient() = googleDriveHelper.getGoogleSignInClient()
+
+    fun hasGoogleDrivePermission(account: GoogleSignInAccount) = googleDriveHelper.hasDrivePermission(account)
+
+    fun startDropboxSync() {
+        dropboxHelper.startAuth()
+    }
+
+    fun handleDropboxAuth() {
+        if (dropboxHelper.handleAuthResponse()) {
+            _isDropboxConnected.value = true
+            syncWithDropbox()
+        }
+    }
+
+    fun syncWithDropbox() {
+        viewModelScope.launch {
+            _dropboxSyncState.value = SyncState.Loading
+            try {
+                val remoteSyncData = dropboxHelper.downloadSyncData()
+                val localExpenses = repository.getAllForSync()
+                
+                val mergedExpenses = if (remoteSyncData != null) {
+                    syncManager.mergeExpenses(remoteSyncData.expenses)
+                } else {
+                    localExpenses
+                }
+
+                dropboxHelper.uploadSyncData(
+                    DropboxSyncData(
+                        lastSyncTimestamp = System.currentTimeMillis(),
+                        expenses = mergedExpenses
+                    )
+                )
+                
+                _dropboxSyncState.value = SyncState.Success("Sync complete")
+                loadExpenses()
+            } catch (e: Exception) {
+                _dropboxSyncState.value = SyncState.Error(e.message ?: "Sync failed")
+            }
+        }
+    }
+
+    fun disconnectDropbox() {
+        dropboxHelper.disconnect()
+        _isDropboxConnected.value = false
+        _dropboxSyncState.value = SyncState.Idle
+    }
+
+    fun exportToCsv(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val csv = repository.generateCsvData()
+            onResult(csv)
+        }
+    }
+
+    companion object {
+        private const val TAG = "ExpenseViewModel"
     }
 }
