@@ -231,14 +231,8 @@ fun QuickActionGrid(onAccountSummary: () -> Unit, onSummary: () -> Unit, onCalen
     Column(modifier = Modifier.padding(8.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
             ActionItem("Summary", Icons.Default.Description, Modifier.weight(1f)) { onSummary() }
-            ActionItem("Budget", Icons.Default.PieChart, Modifier.weight(1f)) {}
-            ActionItem("Recurring", Icons.Default.Repeat, Modifier.weight(1f)) {}
-            ActionItem("Debt", Icons.Default.MoneyOff, Modifier.weight(1f)) {}
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
             ActionItem("Calendar", Icons.Default.CalendarToday, Modifier.weight(1f)) { onCalendar() }
             ActionItem("Chart", Icons.Default.BarChart, Modifier.weight(1f)) {}
-            ActionItem("Transfer", Icons.Default.SyncAlt, Modifier.weight(1f)) {}
             ActionItem("More...", Icons.Default.MoreHoriz, Modifier.weight(1f)) { 
                 android.util.Log.d("QuickActionGrid", "More... clicked")
                 onAccountSummary() 

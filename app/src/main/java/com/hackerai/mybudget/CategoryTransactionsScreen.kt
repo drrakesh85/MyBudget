@@ -29,7 +29,8 @@ import java.util.*
 @Composable
 fun CategoryTransactionsScreen(
     viewModel: ExpenseViewModel = viewModel(),
-    categoryName: String,
+    filterValue: String,
+    filterType: String,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -38,6 +39,8 @@ fun CategoryTransactionsScreen(
     var timeFilter by remember { mutableStateOf("Monthly") }
     var periodOffset by remember { mutableIntStateOf(0) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var isSearchMode by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     val allExpenses = (uiState as? BudgetUiState.Success)?.expenses ?: emptyList()
 
@@ -58,28 +61,64 @@ fun CategoryTransactionsScreen(
         } else "All Time"
     }
 
-    // Filter and Sort all expenses for this category
-    val categoryExpenses = remember(allExpenses, categoryName, selectedAccountName) {
-        allExpenses.filter { it.category == categoryName && (selectedAccountName == null || it.account == selectedAccountName) }
-            .sortedWith(compareBy({ parseDateLocal(it.date) }, { it.time }, { it.rowId }))
+    // Filter and Sort all expenses for this selection
+    val filteredExpensesSet = remember(allExpenses, filterValue, filterType, selectedAccountName) {
+        val isIncomeMode = filterType in listOf("Income", "Income without transfer", "Payer - Income", "Tag - Income")
+        val withoutTransfer = filterType in listOf("Categories without transfer", "Sub Categories without transfer", "Income without transfer")
+        
+        allExpenses.filter { exp ->
+            // 1. Account Filter
+            val accountMatches = selectedAccountName == null || exp.account == selectedAccountName
+            if (!accountMatches) return@filter false
+            
+            // 2. Income/Expense Filter
+            val amountMatches = if (isIncomeMode) exp.amount > 0 else exp.amount < 0
+            if (!amountMatches) return@filter false
+            
+            // 3. Transfer Filter
+            if (withoutTransfer) {
+                val isTransfer = exp.transactionType == "Transfer" || exp.category == "Transfer"
+                if (isTransfer) return@filter false
+            }
+            
+            // 4. Grouping Value Filter
+            val valueMatches = when (filterType) {
+                "Category", "Categories without transfer", "Income", "Income without transfer" -> exp.category == filterValue
+                "Sub Category", "Sub Categories without transfer" -> exp.subcategory == filterValue
+                "Payee", "Payer - Income" -> exp.payeePayer == filterValue
+                "Tag - Expense", "Tag - Income" -> exp.tag == filterValue
+                else -> exp.category == filterValue
+            }
+            valueMatches
+        }.sortedWith(compareBy({ parseDateLocal(it.date) }, { it.time }, { it.rowId }))
     }
 
-    // Map of rowId to running total for this category
-    val runningTotals = remember(categoryExpenses) {
+    // Map of rowId to running total
+    val runningTotals = remember(filteredExpensesSet) {
         var current = 0.0
-        categoryExpenses.associate { exp ->
+        filteredExpensesSet.associate { exp ->
             current += exp.amount
             exp.rowId to current
         }
     }
 
     // Filter for current view period
-    val visibleExpenses = remember(categoryExpenses, currentRange) {
-        categoryExpenses.filter { exp ->
-            if (currentRange.first != null && currentRange.second != null) {
+    val visibleExpenses = remember(filteredExpensesSet, currentRange, searchQuery) {
+        filteredExpensesSet.filter { exp ->
+            val dateMatches = if (currentRange.first != null && currentRange.second != null) {
                 val expDate = parseDateLocal(exp.date)
                 expDate != null && !expDate.isBefore(currentRange.first) && !expDate.isAfter(currentRange.second)
             } else true
+            
+            val searchMatches = if (searchQuery.isNotBlank()) {
+                exp.payeePayer.contains(searchQuery, ignoreCase = true) ||
+                exp.tag.contains(searchQuery, ignoreCase = true) ||
+                exp.category.contains(searchQuery, ignoreCase = true) ||
+                exp.subcategory.contains(searchQuery, ignoreCase = true) ||
+                exp.description.contains(searchQuery, ignoreCase = true)
+            } else true
+
+            dateMatches && searchMatches
         }.sortedWith(compareByDescending<Expense> { parseDateLocal(it.date) }.thenByDescending { it.time }.thenByDescending { it.rowId })
     }
 
@@ -93,39 +132,74 @@ fun CategoryTransactionsScreen(
     Scaffold(
         topBar = {
             Column(modifier = Modifier.background(MaterialTheme.colorScheme.primary)) {
-                TopAppBar(
-                    title = { 
-                        Column {
-                            Text(
-                                text = categoryName, 
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
+                if (isSearchMode) {
+                    TopAppBar(
+                        title = {
+                            TextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                placeholder = { Text("Search transactions...", color = Color.White.copy(alpha = 0.7f)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    disabledContainerColor = Color.Transparent,
+                                    cursorColor = Color.White,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedIndicatorColor = Color.White,
+                                    unfocusedIndicatorColor = Color.White.copy(alpha = 0.5f)
+                                ),
+                                singleLine = true,
+                                trailingIcon = {
+                                    IconButton(onClick = { searchQuery = ""; isSearchMode = false }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close Search", tint = Color.White)
+                                    }
+                                }
                             )
-                            Text(
-                                text = rangeText,
-                                color = Color.White.copy(alpha = 0.8f),
-                                fontSize = 12.sp
-                            )
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { /* Search */ }) {
-                            Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
-                        }
-                        IconButton(onClick = { /* Filter */ }) {
-                            Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = Color.White)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { isSearchMode = false; searchQuery = "" }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    )
+                } else {
+                    TopAppBar(
+                        title = { 
+                            Column {
+                                Text(
+                                    text = filterValue.ifBlank { "Uncategorized" }, 
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = rangeText,
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { isSearchMode = true }) {
+                                Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                            }
+                            IconButton(onClick = { /* Filter */ }) {
+                                Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = Color.White)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    )
+                }
 
-                // Date Navigation Controls (similar to the screenshot)
+                // Date Navigation Controls
                 PeriodNavigationBar(timeFilter, periodOffset) { periodOffset = it }
             }
         },
@@ -133,47 +207,62 @@ fun CategoryTransactionsScreen(
             BottomSummaryBarFiltered(visibleExpenses)
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF5F5F5))) {
-            // Duration Controls
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                TimeFilterChip("All", timeFilter == "All") { timeFilter = "All"; periodOffset = 0 }
-                TimeFilterChip("Weekly", timeFilter == "Weekly") { timeFilter = "Weekly"; periodOffset = 0 }
-                TimeFilterChip("Monthly", timeFilter == "Monthly") { timeFilter = "Monthly"; periodOffset = 0 }
-                TimeFilterChip("Yearly", timeFilter == "Yearly") { timeFilter = "Yearly"; periodOffset = 0 }
-                
-                IconButton(
-                    onClick = { showDatePicker = true },
-                    modifier = Modifier.size(32.dp)
+        Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF5F5F5))) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Duration Controls
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar", tint = Color(0xFF00897B))
+                    TimeFilterChip("All", timeFilter == "All") { timeFilter = "All"; periodOffset = 0 }
+                    TimeFilterChip("Weekly", timeFilter == "Weekly") { timeFilter = "Weekly"; periodOffset = 0 }
+                    TimeFilterChip("Monthly", timeFilter == "Monthly") { timeFilter = "Monthly"; periodOffset = 0 }
+                    TimeFilterChip("Yearly", timeFilter == "Yearly") { timeFilter = "Yearly"; periodOffset = 0 }
+                    
+                    IconButton(
+                        onClick = { showDatePicker = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar", tint = Color(0xFF00897B))
+                    }
+                }
+
+                if (visibleExpenses.isEmpty()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        val msg = if (searchQuery.isNotBlank()) "No search results" else "No transactions found"
+                        Text(msg, color = Color.Gray)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        groupedExpenses.forEach { (date, expenses) ->
+                            val dayEndTotal = runningTotals[expenses.first().rowId] ?: 0.0
+                            
+                            item {
+                                DayHeaderComponent(date, expenses, dayEndTotal)
+                            }
+                            items(expenses, key = { it.rowId }) { expense ->
+                                TransactionListItemComponent(
+                                    expense = expense,
+                                    closingBalance = runningTotals[expense.rowId] ?: 0.0,
+                                    onClick = { viewModel.editExpense(expense) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            if (visibleExpenses.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Text("No transactions found for this category", color = Color.Gray)
-                }
-            } else {
-                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    groupedExpenses.forEach { (date, expenses) ->
-                        val dayEndTotal = runningTotals[expenses.first().rowId] ?: 0.0
-                        
-                        item {
-                            DayHeaderComponent(date, expenses, dayEndTotal)
+            if (isSearchMode && searchQuery.length >= 2) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    SmartSearchOverlay(
+                        query = searchQuery,
+                        expenses = filteredExpensesSet,
+                        onSuggestionClick = { 
+                            searchQuery = it
                         }
-                        items(expenses, key = { it.rowId }) { expense ->
-                            TransactionListItemComponent(
-                                expense = expense,
-                                closingBalance = runningTotals[expense.rowId] ?: 0.0,
-                                onClick = { viewModel.editExpense(expense) }
-                            )
-                        }
-                    }
+                    )
                 }
             }
         }
@@ -187,7 +276,6 @@ fun CategoryTransactionsScreen(
                         val end = datePickerState.selectedEndDateMillis
                         if (start != null && end != null) {
                             timeFilter = "Custom"
-                            // Custom range logic would go here
                         }
                         showDatePicker = false
                     }) { Text("OK") }

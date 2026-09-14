@@ -32,13 +32,15 @@ import kotlin.math.abs
 fun CategorySummaryScreen(
     viewModel: ExpenseViewModel = viewModel(),
     onBack: () -> Unit,
-    onCategoryClick: (String) -> Unit = {}
+    onCategoryClick: (String, String) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val selectedAccount by viewModel.selectedAccount.collectAsState()
     
     var timeFilter by remember { mutableStateOf("Monthly") }
     var periodOffset by remember { mutableIntStateOf(0) }
+    var summaryType by remember { mutableStateOf("Category") }
+    var showMenu by remember { mutableStateOf(false) }
 
     val allExpenses = (uiState as? BudgetUiState.Success)?.expenses ?: emptyList()
     
@@ -60,9 +62,41 @@ fun CategorySummaryScreen(
             Column(modifier = Modifier.background(MaterialTheme.colorScheme.primary)) {
                 TopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Category", color = Color.White)
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color.White)
+                        Box {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { showMenu = true }
+                            ) {
+                                Text(summaryType, color = Color.White)
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color.White)
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false },
+                                modifier = Modifier.background(Color(0xFF333333)) // Dark background like image
+                            ) {
+                                val options = listOf(
+                                    "Category",
+                                    "Sub Category",
+                                    "Payee",
+                                    "Tag - Expense",
+                                    "Categories without transfer",
+                                    "Sub Categories without transfer",
+                                    "Income",
+                                    "Income without transfer",
+                                    "Payer - Income",
+                                    "Tag - Income"
+                                )
+                                options.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option, color = Color.White) },
+                                        onClick = {
+                                            summaryType = option
+                                            showMenu = false
+                                        }
+                                    )
+                                }
+                            }
                         }
                     },
                     navigationIcon = {
@@ -71,9 +105,6 @@ fun CategorySummaryScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { }) { Icon(Icons.Default.Email, contentDescription = "Email", tint = Color.White) }
-                        IconButton(onClick = { }) { Icon(Icons.Default.List, contentDescription = "List", tint = Color.White) }
-                        IconButton(onClick = { }) { Icon(Icons.Default.Dashboard, contentDescription = "Grid", tint = Color.White) }
                         IconButton(onClick = { }) { Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White) }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -140,7 +171,7 @@ fun CategorySummaryScreen(
                     CircularProgressIndicator()
                 }
             } else {
-                val categoryData = calculateCategorySummaryFiltered(filteredExpenses)
+                val categoryData = calculateCategorySummaryFiltered(filteredExpenses, summaryType)
                 if (categoryData.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("No transactions for this period", color = Color.Gray)
@@ -149,7 +180,7 @@ fun CategorySummaryScreen(
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(categoryData) { data ->
                             CategorySummaryItem(data) {
-                                onCategoryClick(data.name)
+                                onCategoryClick(data.name, summaryType)
                             }
                         }
                     }
@@ -180,18 +211,20 @@ private fun filterExpenses(
 
 @Composable
 fun CategorySummaryItem(data: CategorySummaryData, onClick: () -> Unit) {
+    val isIncome = data.isIncome
     Column(modifier = Modifier.clickable { onClick() }) {
         Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Surface(modifier = Modifier.size(40.dp), shape = CircleShape, color = data.color.copy(alpha = 0.8f)) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(text = data.name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
+                    val initial = if (data.name.isNotBlank()) data.name.take(1).uppercase() else "?"
+                    Text(text = initial, color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(modifier = Modifier.width(16.dp))
-            Text(text = data.name, modifier = Modifier.weight(1f), fontSize = 16.sp, color = Color.DarkGray)
+            Text(text = data.name.ifBlank { "Uncategorized" }, modifier = Modifier.weight(1f), fontSize = 16.sp, color = Color.DarkGray)
             Text(
                 text = "${formatSummaryAmount(data.amount)} | ${String.format("%.2f", data.percentage)}%",
-                color = Color.Red,
+                color = if (isIncome) Color(0xFF2E7D32) else Color.Red,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp
             )
@@ -200,25 +233,53 @@ fun CategorySummaryItem(data: CategorySummaryData, onClick: () -> Unit) {
     }
 }
 
-data class CategorySummaryData(val name: String, val amount: Double, val percentage: Double, val color: Color)
+data class CategorySummaryData(val name: String, val amount: Double, val percentage: Double, val color: Color, val isIncome: Boolean = false)
 
-fun calculateCategorySummaryFiltered(expenses: List<Expense>): List<CategorySummaryData> {
-    val expenseList = expenses.filter { it.amount < 0 }
-    val totalExpense = expenseList.sumOf { abs(it.amount) }
+fun calculateCategorySummaryFiltered(expenses: List<Expense>, summaryType: String): List<CategorySummaryData> {
+    val isIncomeMode = summaryType in listOf("Income", "Income without transfer", "Payer - Income", "Tag - Income")
     
-    if (totalExpense == 0.0) return emptyList()
+    val baseList = if (isIncomeMode) {
+        expenses.filter { it.amount > 0 }
+    } else {
+        expenses.filter { it.amount < 0 }
+    }
+
+    val filteredList = when (summaryType) {
+        "Categories without transfer", "Sub Categories without transfer", "Income without transfer" -> {
+            baseList.filter { it.transactionType != "Transfer" && it.category != "Transfer" }
+        }
+        else -> baseList
+    }
+
+    val totalAmount = filteredList.sumOf { abs(it.amount) }
     
-    val grouped = expenseList.groupBy { it.category }
-    val colors = listOf(Color.Green, Color.Blue, Color.Yellow, Color.Red, Color.Magenta, Color.Cyan, Color.DarkGray, Color.Gray, Color.Black)
+    if (totalAmount == 0.0) return emptyList()
+    
+    val grouped = when (summaryType) {
+        "Category", "Categories without transfer", "Income", "Income without transfer" -> filteredList.groupBy { it.category }
+        "Sub Category", "Sub Categories without transfer" -> filteredList.groupBy { it.subcategory }
+        "Payee", "Payer - Income" -> filteredList.groupBy { it.payeePayer }
+        "Tag - Expense", "Tag - Income" -> filteredList.groupBy { it.tag }
+        else -> filteredList.groupBy { it.category }
+    }
+
+    val colors = listOf(
+        Color(0xFFE91E63), Color(0xFF9C27B0), Color(0xFF673AB7), 
+        Color(0xFF3F51B5), Color(0xFF2196F3), Color(0xFF03A9F4),
+        Color(0xFF00BCD4), Color(0xFF009688), Color(0xFF4CAF50),
+        Color(0xFF8BC34A), Color(0xFFCDDC39), Color(0xFFFFEB3B),
+        Color(0xFFFFC107), Color(0xFFFF9800), Color(0xFFFF5722)
+    )
     
     var colorIndex = 0
-    return grouped.map { (category, list) ->
-        val categoryAmount = list.sumOf { abs(it.amount) }
+    return grouped.map { (name, list) ->
+        val groupAmount = list.sumOf { abs(it.amount) }
         CategorySummaryData(
-            name = category,
-            amount = categoryAmount,
-            percentage = (categoryAmount / totalExpense) * 100,
-            color = colors[(colorIndex++) % colors.size]
+            name = name,
+            amount = groupAmount,
+            percentage = (groupAmount / totalAmount) * 100,
+            color = colors[(colorIndex++) % colors.size],
+            isIncome = isIncomeMode
         )
     }.sortedByDescending { it.amount }
 }

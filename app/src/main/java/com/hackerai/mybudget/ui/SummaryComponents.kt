@@ -2,11 +2,13 @@ package com.hackerai.mybudget.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -117,4 +119,100 @@ fun getOffsetYearRange(offset: Int): Pair<LocalDate, LocalDate> {
     val start = base.withDayOfYear(1)
     val end = base.withDayOfYear(base.lengthOfYear())
     return start to end
+}
+
+data class SearchSuggestion(val text: String, val type: String)
+
+@Composable
+fun SmartSearchOverlay(
+    query: String,
+    expenses: List<Expense>,
+    onSuggestionClick: (String) -> Unit
+) {
+    if (query.length < 2) return
+
+    val suggestions = remember(query, expenses) {
+        val list = mutableListOf<SearchSuggestion>()
+        
+        // Payee/Payer
+        expenses.asSequence()
+            .map { it.payeePayer }
+            .filter { it.isNotBlank() && it.contains(query, ignoreCase = true) }
+            .distinct()
+            .take(5)
+            .forEach { list.add(SearchSuggestion(it, "Payee/Payer")) }
+            
+        // Category
+        expenses.asSequence()
+            .map { it.category }
+            .filter { it.isNotBlank() && it.contains(query, ignoreCase = true) }
+            .distinct()
+            .take(3)
+            .forEach { list.add(SearchSuggestion(it, "Category")) }
+            
+        // Sub Category
+        expenses.asSequence()
+            .map { it.subcategory }
+            .filter { it.isNotBlank() && it.contains(query, ignoreCase = true) }
+            .distinct()
+            .take(5)
+            .forEach { list.add(SearchSuggestion(it, "Sub Category")) }
+            
+        // Tag
+        expenses.asSequence()
+            .map { it.tag }
+            .filter { it.isNotBlank() && it.contains(query, ignoreCase = true) }
+            .distinct()
+            .take(3)
+            .forEach { list.add(SearchSuggestion(it, "Tag")) }
+            
+        // Description
+        expenses.asSequence()
+            .map { it.description }
+            .filter { it.isNotBlank() && it.contains(query, ignoreCase = true) }
+            .distinct()
+            .take(8)
+            .forEach { list.add(SearchSuggestion(it, "Description")) }
+            
+        list.distinctBy { it.text.lowercase() + it.type }
+    }
+
+    if (suggestions.isEmpty()) return
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .heightIn(max = 400.dp),
+        color = Color(0xFF333333),
+        shape = MaterialTheme.shapes.small,
+        shadowElevation = 8.dp
+    ) {
+        androidx.compose.foundation.lazy.LazyColumn {
+            items(suggestions) { suggestion ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSuggestionClick(suggestion.text) }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = suggestion.text, 
+                        color = Color.White, 
+                        fontSize = 15.sp, 
+                        modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = suggestion.type, 
+                        color = Color.LightGray, 
+                        fontSize = 11.sp
+                    )
+                }
+                HorizontalDivider(thickness = 0.5.dp, color = Color.Gray.copy(alpha = 0.3f))
+            }
+        }
+    }
 }

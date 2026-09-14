@@ -7,9 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
@@ -22,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hackerai.mybudget.data.Expense
+import com.hackerai.mybudget.ui.*
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
@@ -46,8 +45,12 @@ fun TransactionBrowserScreen(
 
     var showFilters by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var isSearchMode by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     val datePickerState = rememberDateRangePickerState()
+
+    val allExpenses = (uiState as? BudgetUiState.Success)?.expenses ?: emptyList()
 
     val title = remember(selectedAccount, dateRange) {
         val accPart = selectedAccount ?: "All Accounts"
@@ -61,82 +64,142 @@ fun TransactionBrowserScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(title, color = Color.White, fontSize = 18.sp) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showFilters = true }) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Filters", tint = Color.White)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary)
-            )
+            if (isSearchMode) {
+                TopAppBar(
+                    title = {
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Search transactions...", color = Color.White.copy(alpha = 0.7f)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                cursorColor = Color.White,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedIndicatorColor = Color.White,
+                                unfocusedIndicatorColor = Color.White.copy(alpha = 0.5f)
+                            ),
+                            singleLine = true,
+                            trailingIcon = {
+                                IconButton(onClick = { searchQuery = ""; isSearchMode = false }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close Search", tint = Color.White)
+                                }
+                            }
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { isSearchMode = false; searchQuery = "" }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary)
+                )
+            } else {
+                TopAppBar(
+                    title = { Text(title, color = Color.White, fontSize = 18.sp) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { isSearchMode = true }) {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                        }
+                        IconButton(onClick = { showFilters = true }) {
+                            Icon(Icons.Default.FilterList, contentDescription = "Filters", tint = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primary)
+                )
+            }
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize().background(Color.White)) {
-            // Quick Date Filters
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                QuickFilterChip("Week", dateRange, viewModel) { getWeekRange() }
-                QuickFilterChip("Month", dateRange, viewModel) { getMonthRange() }
-                QuickFilterChip("Year", dateRange, viewModel) { getYearRange() }
-                FilterChip(
-                    selected = dateRange.first == null && dateRange.second == null,
-                    onClick = { viewModel.setDateRange(null, null) },
-                    label = { Text("All") }
-                )
-                IconButton(onClick = { showDatePicker = true }) {
-                    Icon(Icons.Default.CalendarMonth, contentDescription = "Custom Range")
+        Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color.White)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Quick Date Filters
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QuickFilterChip("Week", dateRange, viewModel) { getWeekRange() }
+                    QuickFilterChip("Month", dateRange, viewModel) { getMonthRange() }
+                    QuickFilterChip("Year", dateRange, viewModel) { getYearRange() }
+                    FilterChip(
+                        selected = dateRange.first == null && dateRange.second == null,
+                        onClick = { viewModel.setDateRange(null, null) },
+                        label = { Text("All") }
+                    )
+                    IconButton(onClick = { showDatePicker = true }) {
+                        Icon(Icons.Default.CalendarMonth, contentDescription = "Custom Range")
+                    }
                 }
-            }
 
-            HorizontalDivider(thickness = 0.5.dp)
+                HorizontalDivider(thickness = 0.5.dp)
 
-            when (val state = uiState) {
-                is BudgetUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-                is BudgetUiState.Error -> Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
-                is BudgetUiState.Success -> {
-                    val filteredList = state.expenses.filter { expense ->
-                        val dateMatches = if (dateRange.first != null && dateRange.second != null) {
-                            val expDate = parseDate(expense.date) ?: 0L
-                            expDate in dateRange.first!!..dateRange.second!!
-                        } else true
+                when (val state = uiState) {
+                    is BudgetUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                    is BudgetUiState.Error -> Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
+                    is BudgetUiState.Success -> {
+                        val filteredList = state.expenses.filter { expense ->
+                            val dateMatches = if (dateRange.first != null && dateRange.second != null) {
+                                val expDate = parseDate(expense.date) ?: 0L
+                                expDate in dateRange.first!!..dateRange.second!!
+                            } else true
 
-                        val accountMatches = selectedAccount == null || expense.account == selectedAccount
-                        val categoryMatches = selectedCategory == null || expense.category == selectedCategory
-                        val typeMatches = selectedType == null || expense.transactionType == selectedType
+                            val accountMatches = selectedAccount == null || expense.account == selectedAccount
+                            val categoryMatches = selectedCategory == null || expense.category == selectedCategory
+                            val typeMatches = selectedType == null || expense.transactionType == selectedType
+                            
+                            val searchMatches = if (searchQuery.isNotBlank()) {
+                                expense.payeePayer.contains(searchQuery, ignoreCase = true) ||
+                                expense.tag.contains(searchQuery, ignoreCase = true) ||
+                                expense.category.contains(searchQuery, ignoreCase = true) ||
+                                expense.subcategory.contains(searchQuery, ignoreCase = true) ||
+                                expense.description.contains(searchQuery, ignoreCase = true)
+                            } else true
 
-                        !expense.isDeleted && dateMatches && accountMatches && categoryMatches && typeMatches
-                    }.sortedByDescending { parseDate(it.date) ?: 0L }
+                            !expense.isDeleted && dateMatches && accountMatches && categoryMatches && typeMatches && searchMatches
+                        }.sortedByDescending { parseDate(it.date) ?: 0L }
 
-                    if (filteredList.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No transactions found")
-                        }
-                    } else {
-                        val grouped = filteredList.groupBy { it.date }
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            grouped.forEach { (date, items) ->
-                                item {
-                                    DateHeader(date)
-                                }
-                                items(items) { expense ->
-                                    DetailedExpenseItem(expense) {
-                                        viewModel.editExpense(expense)
-                                        onBack()
+                        if (filteredList.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("No transactions found")
+                            }
+                        } else {
+                            val grouped = filteredList.groupBy { it.date }
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                grouped.forEach { (date, items) ->
+                                    item {
+                                        DateHeader(date)
+                                    }
+                                    items(items) { expense ->
+                                        DetailedExpenseItem(expense) {
+                                            viewModel.editExpense(expense)
+                                            onBack()
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    else -> {}
                 }
-                else -> {}
+            }
+
+            if (isSearchMode && searchQuery.length >= 2) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    SmartSearchOverlay(
+                        query = searchQuery,
+                        expenses = allExpenses,
+                        onSuggestionClick = { 
+                            searchQuery = it
+                        }
+                    )
+                }
             }
         }
 
@@ -324,11 +387,11 @@ fun DropdownSelector(label: String, items: List<String>, selected: String?, onSe
 }
 
 private fun parseDate(dateStr: String): Long? {
+    if (dateStr.isBlank() || dateStr == "Date") return null
     return try {
         LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.getDefault()))
             .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
     } catch (e: Exception) {
-        android.util.Log.w("TransactionBrowser", "Failed to parse date: $dateStr", e)
         null
     }
 }

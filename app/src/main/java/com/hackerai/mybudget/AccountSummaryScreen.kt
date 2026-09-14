@@ -40,6 +40,8 @@ fun AccountSummaryScreen(
     var timeFilter by remember { mutableStateOf("Monthly") }
     var periodOffset by remember { mutableIntStateOf(0) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var isSearchMode by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     val allExpenses = (uiState as? BudgetUiState.Success)?.expenses ?: emptyList()
 
@@ -76,12 +78,22 @@ fun AccountSummaryScreen(
     }
 
     // Filter for current view period
-    val visibleExpenses = remember(accountExpenses, currentRange) {
+    val visibleExpenses = remember(accountExpenses, currentRange, searchQuery) {
         accountExpenses.filter { exp ->
-            if (currentRange.first != null && currentRange.second != null) {
+            val dateMatches = if (currentRange.first != null && currentRange.second != null) {
                 val expDate = parseDateLocal(exp.date)
                 expDate != null && !expDate.isBefore(currentRange.first) && !expDate.isAfter(currentRange.second)
             } else true
+            
+            val searchMatches = if (searchQuery.isNotBlank()) {
+                exp.payeePayer.contains(searchQuery, ignoreCase = true) ||
+                exp.tag.contains(searchQuery, ignoreCase = true) ||
+                exp.category.contains(searchQuery, ignoreCase = true) ||
+                exp.subcategory.contains(searchQuery, ignoreCase = true) ||
+                exp.description.contains(searchQuery, ignoreCase = true)
+            } else true
+
+            dateMatches && searchMatches
         }.sortedWith(compareByDescending<Expense> { parseDateLocal(it.date) }.thenByDescending { it.time }.thenByDescending { it.rowId })
     }
 
@@ -95,26 +107,64 @@ fun AccountSummaryScreen(
     Scaffold(
         topBar = {
             Column(modifier = Modifier.background(MaterialTheme.colorScheme.primary)) {
-                TopAppBar(
-                    title = { 
-                        Text(
-                            text = "${selectedAccountName ?: "Account"}: $rangeText", 
-                            color = Color.White,
-                            fontSize = 18.sp
-                        ) 
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { /* Filter or Search */ }) {
-                            Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = Color.White)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                )
+                if (isSearchMode) {
+                    TopAppBar(
+                        title = {
+                            TextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                placeholder = { Text("Search transactions...", color = Color.White.copy(alpha = 0.7f)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    disabledContainerColor = Color.Transparent,
+                                    cursorColor = Color.White,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedIndicatorColor = Color.White,
+                                    unfocusedIndicatorColor = Color.White.copy(alpha = 0.5f)
+                                ),
+                                singleLine = true,
+                                trailingIcon = {
+                                    IconButton(onClick = { searchQuery = ""; isSearchMode = false }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close Search", tint = Color.White)
+                                    }
+                                }
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { isSearchMode = false; searchQuery = "" }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    )
+                } else {
+                    TopAppBar(
+                        title = { 
+                            Text(
+                                text = "${selectedAccountName ?: "Account"}: $rangeText", 
+                                color = Color.White,
+                                fontSize = 18.sp
+                            ) 
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { isSearchMode = true }) {
+                                Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                            }
+                            IconButton(onClick = { /* Filter */ }) {
+                                Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = Color.White)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    )
+                }
 
                 // Period Selector (Week, Month, Year, All, Calendar)
                 Row(
@@ -147,28 +197,39 @@ fun AccountSummaryScreen(
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF5F5F5))) {
-            if (visibleExpenses.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No transactions found", color = Color.Gray)
-                }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    groupedExpenses.forEach { (date, expenses) ->
-                        // The 'expenses' list is sorted descending (latest first).
-                        // Chronologically last transaction of the day is the first in this list.
-                        val dayEndBalance = runningBalances[expenses.first().rowId] ?: 0.0
-                        
-                        item {
-                            DayHeader(date, expenses, dayEndBalance)
-                        }
-                        items(expenses, key = { it.rowId }) { expense ->
-                            TransactionListItem(
-                                expense = expense,
-                                closingBalance = runningBalances[expense.rowId] ?: 0.0,
-                                onClick = { viewModel.editExpense(expense) }
-                            )
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (visibleExpenses.isEmpty()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("No transactions found", color = Color.Gray)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        groupedExpenses.forEach { (date, expenses) ->
+                            val dayEndBalance = runningBalances[expenses.first().rowId] ?: 0.0
+                            item {
+                                DayHeader(date, expenses, dayEndBalance)
+                            }
+                            items(expenses, key = { it.rowId }) { expense ->
+                                TransactionListItem(
+                                    expense = expense,
+                                    closingBalance = runningBalances[expense.rowId] ?: 0.0,
+                                    onClick = { viewModel.editExpense(expense) }
+                                )
+                            }
                         }
                     }
+                }
+            }
+            
+            if (isSearchMode && searchQuery.length >= 2) {
+                Box(modifier = Modifier.fillMaxSize().padding(top = 0.dp)) {
+                    SmartSearchOverlay(
+                        query = searchQuery,
+                        expenses = accountExpenses,
+                        onSuggestionClick = { 
+                            searchQuery = it
+                        }
+                    )
                 }
             }
         }
@@ -182,7 +243,6 @@ fun AccountSummaryScreen(
                         val end = datePickerState.selectedEndDateMillis
                         if (start != null && end != null) {
                             timeFilter = "Custom"
-                            // Custom range logic could be added here, for now we just close
                         }
                         showDatePicker = false
                     }) { Text("OK") }
@@ -273,7 +333,7 @@ fun TransactionListItem(expense: Expense, closingBalance: Double, onClick: () ->
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = expense.description.ifEmpty { expense.category }.lowercase(),
+                    text = expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } }.lowercase(),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )

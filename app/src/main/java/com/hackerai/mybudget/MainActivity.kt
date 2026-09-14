@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
             MyBudgetTheme {
                 var currentScreen by remember { mutableStateOf(Screen.EXPENSE_LIST) }
                 var selectedCategoryForTransactions by remember { mutableStateOf("") }
+                var selectedSummaryTypeForTransactions by remember { mutableStateOf("Category") }
                 expenseViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
                 
                 val googleSignInLauncher = rememberLauncherForActivityResult(
@@ -178,8 +179,9 @@ class MainActivity : ComponentActivity() {
                             CategorySummaryScreen(
                                 viewModel = expenseViewModel,
                                 onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                onCategoryClick = { category ->
-                                    selectedCategoryForTransactions = category
+                                onCategoryClick = { name, type ->
+                                    selectedCategoryForTransactions = name
+                                    selectedSummaryTypeForTransactions = type
                                     currentScreen = Screen.CATEGORY_TRANSACTIONS
                                 }
                             )
@@ -187,7 +189,8 @@ class MainActivity : ComponentActivity() {
                         Screen.CATEGORY_TRANSACTIONS -> {
                             CategoryTransactionsScreen(
                                 viewModel = expenseViewModel,
-                                categoryName = selectedCategoryForTransactions,
+                                filterValue = selectedCategoryForTransactions,
+                                filterType = selectedSummaryTypeForTransactions,
                                 onBack = { currentScreen = Screen.CATEGORY_SUMMARY }
                             )
                         }
