@@ -27,11 +27,13 @@ fun SettingsScreen(
     onNavigateToTagSettings: () -> Unit = {},
     onNavigateToAudit: () -> Unit = {},
     onNavigateToAccountManagement: () -> Unit = {},
-    onRestoreBackup: () -> Unit = {},
+    onNavigateToBackupRestore: () -> Unit = {},
     onGoogleDriveSync: () -> Unit = {},
     onDropboxSync: () -> Unit = {},
     onExportCsv: () -> Unit = {},
     onExportExcel: () -> Unit = {},
+    onImportCsv: () -> Unit = {},
+    onImportExcel: () -> Unit = {},
     expenseViewModel: ExpenseViewModel = viewModel()
 ) {
     val isDropboxConnected by expenseViewModel.isDropboxConnected.collectAsState()
@@ -46,9 +48,11 @@ fun SettingsScreen(
 
     val settingsItems = listOf(
         "PIN setup" to Color(0xFF4CAF50),
-        "Backup" to Color(0xFF00BCD4),
+        "Backup & Restore App Data" to Color(0xFF00BCD4),
         "Sync with Dropbox" to Color(0xFFFF9800),
         "Google Drive" to Color(0xFFF44336),
+        "Import from Excel" to Color(0xFF8BC34A),
+        "Import from CSV" to Color(0xFFCDDC39),
         "Export to Excel" to Color(0xFF2E7D32),
         "Export to CSV" to Color(0xFF1976D2),
         "Date" to Color(0xFF9E9E9E),
@@ -107,9 +111,11 @@ fun SettingsScreen(
                                 "Category" -> onNavigateToCategorySettings()
                                 "Tags" -> onNavigateToTagSettings()
                                 "Audit & Integrity" -> onNavigateToAudit()
-                                "Backup" -> onRestoreBackup()
+                                "Backup & Restore App Data" -> onNavigateToBackupRestore()
                                 "Export to CSV" -> onExportCsv()
                                 "Export to Excel" -> onExportExcel()
+                                "Import from CSV" -> onImportCsv()
+                                "Import from Excel" -> onImportExcel()
                             }
                         }
                     )

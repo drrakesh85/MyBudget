@@ -86,6 +86,11 @@ fun TransactionBrowserScreen(
                 QuickFilterChip("Week", dateRange, viewModel) { getWeekRange() }
                 QuickFilterChip("Month", dateRange, viewModel) { getMonthRange() }
                 QuickFilterChip("Year", dateRange, viewModel) { getYearRange() }
+                FilterChip(
+                    selected = dateRange.first == null && dateRange.second == null,
+                    onClick = { viewModel.setDateRange(null, null) },
+                    label = { Text("All") }
+                )
                 IconButton(onClick = { showDatePicker = true }) {
                     Icon(Icons.Default.CalendarMonth, contentDescription = "Custom Range")
                 }

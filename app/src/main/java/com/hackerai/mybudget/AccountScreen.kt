@@ -37,7 +37,7 @@ import java.util.Locale
 sealed class AccountData {
     data class Saving(val nickName: String, val bankName: String, val branchName: String, val accountNumber: String) : AccountData()
     data class Loan(val nickName: String, val bankName: String, val branchName: String, val accountNumber: String) : AccountData()
-    data class CreditCard(val nickName: String, val bankName: String, val cardNumber: String, val expiry: String, val billingDate: Int, val dueDate: Int) : AccountData()
+    data class CreditCard(val nickName: String, val bankName: String, val cardNumber: String, val expiry: String, val cvv: String, val billingDate: Int, val dueDate: Int) : AccountData()
     data class Cash(val nickName: String) : AccountData()
 }
 
@@ -246,18 +246,20 @@ fun AccountScreen(
                 onDismiss = { showAddDialog = false },
                 onAdd = { data ->
                     if (editingAccountData != null) {
+                        val id = editingAccountData!!.id
+                        val isHidden = editingAccountData!!.isHidden
                         val updated = when (data) {
-                            is AccountData.Saving -> (editingAccountData as SavingAccount).copy(nickName = data.nickName, bankName = data.bankName, branchName = data.branchName, accountNumber = data.accountNumber)
-                            is AccountData.Loan -> (editingAccountData as LoanAccount).copy(nickName = data.nickName, bankName = data.bankName, branchName = data.branchName, accountNumber = data.accountNumber)
-                            is AccountData.CreditCard -> (editingAccountData as CreditCardAccount).copy(nickName = data.nickName, bankName = data.bankName, cardNumber = data.cardNumber, expiry = data.expiry, billingDate = data.billingDate, dueDate = data.dueDate)
-                            is AccountData.Cash -> (editingAccountData as CashAccount).copy(nickName = data.nickName)
+                            is AccountData.Saving -> SavingAccount(id, data.nickName, data.bankName, data.branchName, data.accountNumber, isHidden)
+                            is AccountData.Loan -> LoanAccount(id, data.nickName, data.bankName, data.branchName, data.accountNumber, isHidden)
+                            is AccountData.CreditCard -> CreditCardAccount(id, data.nickName, data.bankName, data.cardNumber, data.expiry, data.cvv, data.billingDate, data.dueDate, isHidden)
+                            is AccountData.Cash -> CashAccount(id, data.nickName, isHidden)
                         }
                         viewModel.updateAccount(updated)
                     } else {
                         when (data) {
                             is AccountData.Saving -> viewModel.addSavingAccount(data.nickName, data.bankName, data.branchName, data.accountNumber)
                             is AccountData.Loan -> viewModel.addLoanAccount(data.nickName, data.bankName, data.branchName, data.accountNumber)
-                            is AccountData.CreditCard -> viewModel.addCreditCardAccount(data.nickName, data.bankName, data.cardNumber, data.expiry, data.billingDate, data.dueDate)
+                            is AccountData.CreditCard -> viewModel.addCreditCardAccount(data.nickName, data.bankName, data.cardNumber, data.expiry, data.cvv, data.billingDate, data.dueDate)
                             is AccountData.Cash -> viewModel.addCashAccount(data.nickName)
                         }
                     }
@@ -379,6 +381,7 @@ fun AddAccountDialog(editingAccount: Account?, onDismiss: () -> Unit, onAdd: (Ac
     var accountNumber by remember { mutableStateOf((editingAccount as? SavingAccount)?.accountNumber ?: (editingAccount as? LoanAccount)?.accountNumber ?: "") }
     var cardNumber by remember { mutableStateOf((editingAccount as? CreditCardAccount)?.cardNumber ?: "") }
     var expiry by remember { mutableStateOf((editingAccount as? CreditCardAccount)?.expiry ?: "") }
+    var cvv by remember { mutableStateOf((editingAccount as? CreditCardAccount)?.cvv ?: "") }
     var billingDate by remember { mutableStateOf((editingAccount as? CreditCardAccount)?.billingDate?.toString() ?: "") }
     var dueDate by remember { mutableStateOf((editingAccount as? CreditCardAccount)?.dueDate?.toString() ?: "") }
 
@@ -415,6 +418,7 @@ fun AddAccountDialog(editingAccount: Account?, onDismiss: () -> Unit, onAdd: (Ac
                     AccountType.CREDIT_CARD -> {
                         TextField(value = cardNumber, onValueChange = { cardNumber = it }, label = { Text("Card Number") }, modifier = Modifier.fillMaxWidth())
                         TextField(value = expiry, onValueChange = { expiry = it }, label = { Text("Expiry (MM/YY)") }, modifier = Modifier.fillMaxWidth())
+                        TextField(value = cvv, onValueChange = { cvv = it }, label = { Text("CVV") }, modifier = Modifier.fillMaxWidth())
                         TextField(value = billingDate, onValueChange = { billingDate = it }, label = { Text("Billing Date (1-31)") }, modifier = Modifier.fillMaxWidth())
                         TextField(value = dueDate, onValueChange = { dueDate = it }, label = { Text("Due Date (1-31)") }, modifier = Modifier.fillMaxWidth())
                     }
@@ -427,7 +431,7 @@ fun AddAccountDialog(editingAccount: Account?, onDismiss: () -> Unit, onAdd: (Ac
                 val data = when (selectedType) {
                     AccountType.SAVING -> AccountData.Saving(nickName, bankName, branchName, accountNumber)
                     AccountType.LOAN -> AccountData.Loan(nickName, bankName, branchName, accountNumber)
-                    AccountType.CREDIT_CARD -> AccountData.CreditCard(nickName, bankName, cardNumber, expiry, billingDate.toIntOrNull() ?: 1, dueDate.toIntOrNull() ?: 1)
+                    AccountType.CREDIT_CARD -> AccountData.CreditCard(nickName, bankName, cardNumber, expiry, cvv, billingDate.toIntOrNull() ?: 1, dueDate.toIntOrNull() ?: 1)
                     AccountType.CASH -> AccountData.Cash(nickName)
                 }
                 onAdd(data)

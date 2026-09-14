@@ -14,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,14 +27,13 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AccountSummaryScreen(
+fun CategoryTransactionsScreen(
     viewModel: ExpenseViewModel = viewModel(),
-    onBack: () -> Unit,
-    onManageAccounts: () -> Unit,
-    onNavigateToBrowser: () -> Unit = {}
+    categoryName: String,
+    onBack: () -> Unit
 ) {
-    val selectedAccountName by viewModel.selectedAccount.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val selectedAccountName by viewModel.selectedAccount.collectAsState()
     
     var timeFilter by remember { mutableStateOf("Monthly") }
     var periodOffset by remember { mutableIntStateOf(0) }
@@ -55,29 +53,29 @@ fun AccountSummaryScreen(
 
     val rangeText = remember(currentRange) {
         if (currentRange.first != null && currentRange.second != null) {
-            val formatter = DateTimeFormatter.ofPattern("dd-MM")
+            val formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy")
             "${currentRange.first!!.format(formatter)} - ${currentRange.second!!.format(formatter)}"
         } else "All Time"
     }
 
-    // Filter and Sort all expenses for this account to calculate running balance correctly
-    val accountExpenses = remember(allExpenses, selectedAccountName) {
-        allExpenses.filter { it.account == selectedAccountName }
+    // Filter and Sort all expenses for this category
+    val categoryExpenses = remember(allExpenses, categoryName, selectedAccountName) {
+        allExpenses.filter { it.category == categoryName && (selectedAccountName == null || it.account == selectedAccountName) }
             .sortedWith(compareBy({ parseDateLocal(it.date) }, { it.time }, { it.rowId }))
     }
 
-    // Map of rowId to running balance
-    val runningBalances = remember(accountExpenses) {
+    // Map of rowId to running total for this category
+    val runningTotals = remember(categoryExpenses) {
         var current = 0.0
-        accountExpenses.associate { exp ->
+        categoryExpenses.associate { exp ->
             current += exp.amount
             exp.rowId to current
         }
     }
 
     // Filter for current view period
-    val visibleExpenses = remember(accountExpenses, currentRange) {
-        accountExpenses.filter { exp ->
+    val visibleExpenses = remember(categoryExpenses, currentRange) {
+        categoryExpenses.filter { exp ->
             if (currentRange.first != null && currentRange.second != null) {
                 val expDate = parseDateLocal(exp.date)
                 expDate != null && !expDate.isBefore(currentRange.first) && !expDate.isAfter(currentRange.second)
@@ -97,11 +95,19 @@ fun AccountSummaryScreen(
             Column(modifier = Modifier.background(MaterialTheme.colorScheme.primary)) {
                 TopAppBar(
                     title = { 
-                        Text(
-                            text = "${selectedAccountName ?: "Account"}: $rangeText", 
-                            color = Color.White,
-                            fontSize = 18.sp
-                        ) 
+                        Column {
+                            Text(
+                                text = categoryName, 
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = rangeText,
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontSize = 12.sp
+                            )
+                        }
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
@@ -109,62 +115,61 @@ fun AccountSummaryScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { /* Filter or Search */ }) {
+                        IconButton(onClick = { /* Search */ }) {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                        }
+                        IconButton(onClick = { /* Filter */ }) {
                             Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = Color.White)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
 
-                // Period Selector (Week, Month, Year, All, Calendar)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    PeriodButton("Week", timeFilter == "Weekly") { timeFilter = "Weekly"; periodOffset = 0 }
-                    PeriodButton("Month", timeFilter == "Monthly") { timeFilter = "Monthly"; periodOffset = 0 }
-                    PeriodButton("Year", timeFilter == "Yearly") { timeFilter = "Yearly"; periodOffset = 0 }
-                    PeriodButton("All", timeFilter == "All") { timeFilter = "All"; periodOffset = 0 }
-                    
-                    Spacer(modifier = Modifier.weight(1f))
-                    
-                    IconButton(
-                        onClick = { showDatePicker = true },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(Color.White.copy(alpha = 0.2f), MaterialTheme.shapes.small)
-                    ) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar", tint = Color.White, modifier = Modifier.size(20.dp))
-                    }
-                }
+                // Date Navigation Controls (similar to the screenshot)
+                PeriodNavigationBar(timeFilter, periodOffset) { periodOffset = it }
             }
         },
         bottomBar = {
             BottomSummaryBarFiltered(visibleExpenses)
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF5F5F5))) {
+        Column(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF5F5F5))) {
+            // Duration Controls
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                TimeFilterChip("All", timeFilter == "All") { timeFilter = "All"; periodOffset = 0 }
+                TimeFilterChip("Weekly", timeFilter == "Weekly") { timeFilter = "Weekly"; periodOffset = 0 }
+                TimeFilterChip("Monthly", timeFilter == "Monthly") { timeFilter = "Monthly"; periodOffset = 0 }
+                TimeFilterChip("Yearly", timeFilter == "Yearly") { timeFilter = "Yearly"; periodOffset = 0 }
+                
+                IconButton(
+                    onClick = { showDatePicker = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar", tint = Color(0xFF00897B))
+                }
+            }
+
             if (visibleExpenses.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No transactions found", color = Color.Gray)
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("No transactions found for this category", color = Color.Gray)
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     groupedExpenses.forEach { (date, expenses) ->
-                        // The 'expenses' list is sorted descending (latest first).
-                        // Chronologically last transaction of the day is the first in this list.
-                        val dayEndBalance = runningBalances[expenses.first().rowId] ?: 0.0
+                        val dayEndTotal = runningTotals[expenses.first().rowId] ?: 0.0
                         
                         item {
-                            DayHeader(date, expenses, dayEndBalance)
+                            DayHeaderComponent(date, expenses, dayEndTotal)
                         }
                         items(expenses, key = { it.rowId }) { expense ->
-                            TransactionListItem(
+                            TransactionListItemComponent(
                                 expense = expense,
-                                closingBalance = runningBalances[expense.rowId] ?: 0.0,
+                                closingBalance = runningTotals[expense.rowId] ?: 0.0,
                                 onClick = { viewModel.editExpense(expense) }
                             )
                         }
@@ -182,7 +187,7 @@ fun AccountSummaryScreen(
                         val end = datePickerState.selectedEndDateMillis
                         if (start != null && end != null) {
                             timeFilter = "Custom"
-                            // Custom range logic could be added here, for now we just close
+                            // Custom range logic would go here
                         }
                         showDatePicker = false
                     }) { Text("OK") }
@@ -195,29 +200,7 @@ fun AccountSummaryScreen(
 }
 
 @Composable
-fun PeriodButton(label: String, isSelected: Boolean, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .width(80.dp)
-            .height(32.dp)
-            .clickable { onClick() },
-        color = if (isSelected) Color(0xFFE0E0E0) else Color.White.copy(alpha = 0.1f),
-        shape = MaterialTheme.shapes.small,
-        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = label,
-                color = if (isSelected) Color.Black else Color.White,
-                fontSize = 14.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-            )
-        }
-    }
-}
-
-@Composable
-fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double) {
+fun DayHeaderComponent(date: String, dayExpenses: List<Expense>, dayEndTotal: Double) {
     val parsedDate = parseDateLocal(date)
     val dayName = parsedDate?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale.getDefault())?.uppercase() ?: ""
     
@@ -250,7 +233,7 @@ fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double) {
                     Text(formatSimple(expense), color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                 }
                 Text(
-                    text = formatSimple(dayEndBalance),
+                    text = formatSimple(dayEndTotal),
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
                     color = Color.Black,
@@ -262,7 +245,7 @@ fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double) {
 }
 
 @Composable
-fun TransactionListItem(expense: Expense, closingBalance: Double, onClick: () -> Unit) {
+fun TransactionListItemComponent(expense: Expense, closingBalance: Double, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -273,12 +256,12 @@ fun TransactionListItem(expense: Expense, closingBalance: Double, onClick: () ->
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = expense.description.ifEmpty { expense.category }.lowercase(),
+                    text = expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } },
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${expense.category}:${expense.subcategory}",
+                    text = "${expense.category}:${expense.subcategory} | ${expense.account}",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )

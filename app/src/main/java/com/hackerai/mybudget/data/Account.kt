@@ -39,6 +39,7 @@ data class CreditCardAccount(
     val bankName: String,
     val cardNumber: String,
     val expiry: String,
+    val cvv: String,
     val billingDate: Int,
     val dueDate: Int,
     override val isHidden: Boolean = false

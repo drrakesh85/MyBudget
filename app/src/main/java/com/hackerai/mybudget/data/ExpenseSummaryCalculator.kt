@@ -41,10 +41,14 @@ object ExpenseSummaryCalculator {
     }
 
     private fun parseDate(dateStr: String): Long? {
+        if (dateStr.equals("Date", ignoreCase = true)) return null
         return try {
             LocalDate.parse(dateStr, dateFormatter).atStartOfDay(zoneId).toInstant().toEpochMilli()
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse date: $dateStr", e)
+            // Only log if it's not the header
+            if (!dateStr.equals("Date", ignoreCase = true)) {
+                Log.w(TAG, "Failed to parse date: $dateStr")
+            }
             null
         }
     }

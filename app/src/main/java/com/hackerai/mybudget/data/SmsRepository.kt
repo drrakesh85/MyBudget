@@ -9,6 +9,7 @@ class SmsRepository(private val context: Context) {
 
     suspend fun fetchSmsMessages(): List<SmsMessage> = withContext(Dispatchers.IO) {
         val messages = mutableListOf<SmsMessage>()
+        android.util.Log.d("SmsRepository", "Fetching SMS messages...")
         val cursor = context.contentResolver.query(
             Telephony.Sms.CONTENT_URI,
             arrayOf(Telephony.Sms._ID, Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
@@ -16,6 +17,8 @@ class SmsRepository(private val context: Context) {
             null,
             "${Telephony.Sms.DATE} DESC"
         )
+        
+        android.util.Log.d("SmsRepository", "Cursor count: ${cursor?.count ?: 0}")
 
         cursor?.use {
             val idIndex = it.getColumnIndex(Telephony.Sms._ID)

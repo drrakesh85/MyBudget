@@ -28,7 +28,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 enum class Screen {
-    EXPENSE_LIST, TRANSACTION_BROWSER, CATEGORY_SUMMARY, CALENDAR_VIEW, ACCOUNT_SUMMARY, SETTINGS, CATEGORY_SETTINGS, TAG_SETTINGS, SMS_IMPORT, ACCOUNT_LIST, AUDIT
+    EXPENSE_LIST, TRANSACTION_BROWSER, CATEGORY_SUMMARY, CALENDAR_VIEW, ACCOUNT_SUMMARY, SETTINGS, CATEGORY_SETTINGS, TAG_SETTINGS, SMS_IMPORT, ACCOUNT_LIST, AUDIT, BACKUP_RESTORE, CATEGORY_TRANSACTIONS
 }
 
 class MainActivity : ComponentActivity() {
@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyBudgetTheme {
                 var currentScreen by remember { mutableStateOf(Screen.EXPENSE_LIST) }
+                var selectedCategoryForTransactions by remember { mutableStateOf("") }
                 expenseViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
                 
                 val googleSignInLauncher = rememberLauncherForActivityResult(
@@ -100,6 +101,33 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val googleDriveSyncState by expenseViewModel.googleDriveSyncState.collectAsState()
+                
+                val csvImportLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    uri?.let {
+                        contentResolver.openInputStream(it)?.use { stream ->
+                            expenseViewModel.importFromStream(stream) {
+                                Toast.makeText(this@MainActivity, "CSV Import complete!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+
+                val excelImportLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    uri?.let {
+                        contentResolver.openInputStream(it)?.use { stream ->
+                            // For now, using the same CSV parser as many people export CSV with .xls extension
+                            // In a real app, we'd use Apache POI or similar for true Excel
+                            expenseViewModel.importFromStream(stream) {
+                                Toast.makeText(this@MainActivity, "Excel/XLS Import complete!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+
                 LaunchedEffect(googleDriveSyncState) {
                     when (val state = googleDriveSyncState) {
                         is SyncState.Success -> {
@@ -148,7 +176,19 @@ class MainActivity : ComponentActivity() {
                         }
                         Screen.CATEGORY_SUMMARY -> {
                             CategorySummaryScreen(
-                                onBack = { currentScreen = Screen.EXPENSE_LIST }
+                                viewModel = expenseViewModel,
+                                onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                onCategoryClick = { category ->
+                                    selectedCategoryForTransactions = category
+                                    currentScreen = Screen.CATEGORY_TRANSACTIONS
+                                }
+                            )
+                        }
+                        Screen.CATEGORY_TRANSACTIONS -> {
+                            CategoryTransactionsScreen(
+                                viewModel = expenseViewModel,
+                                categoryName = selectedCategoryForTransactions,
+                                onBack = { currentScreen = Screen.CATEGORY_SUMMARY }
                             )
                         }
                         Screen.CALENDAR_VIEW -> {
@@ -159,7 +199,7 @@ class MainActivity : ComponentActivity() {
                         Screen.ACCOUNT_SUMMARY -> {
                             AccountSummaryScreen(
                                 viewModel = expenseViewModel,
-                                onBack = { currentScreen = Screen.ACCOUNT_LIST },
+                                onBack = { currentScreen = Screen.EXPENSE_LIST },
                                 onManageAccounts = { currentScreen = Screen.ACCOUNT_LIST },
                                 onNavigateToBrowser = { currentScreen = Screen.TRANSACTION_BROWSER }
                             )
@@ -171,11 +211,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToTagSettings = { currentScreen = Screen.TAG_SETTINGS },
                                 onNavigateToAudit = { currentScreen = Screen.AUDIT },
                                 onNavigateToAccountManagement = { currentScreen = Screen.ACCOUNT_LIST },
-                                onRestoreBackup = {
-                                    expenseViewModel.importCsv()
-                                    Toast.makeText(this@MainActivity, "Restoring transactions...", Toast.LENGTH_SHORT).show()
-                                    currentScreen = Screen.EXPENSE_LIST
-                                },
+                                onNavigateToBackupRestore = { currentScreen = Screen.BACKUP_RESTORE },
                                 onGoogleDriveSync = {
                                     val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
                                     if (lastAccount != null) {
@@ -194,7 +230,19 @@ class MainActivity : ComponentActivity() {
                                 onExportExcel = {
                                     exportData(expenseViewModel, "my_budget_export.xls", "application/vnd.ms-excel")
                                 },
+                                onImportCsv = {
+                                    csvImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv"))
+                                },
+                                onImportExcel = {
+                                    excelImportLauncher.launch(arrayOf("application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                                },
                                 expenseViewModel = expenseViewModel
+                            )
+                        }
+                        Screen.BACKUP_RESTORE -> {
+                            BackupRestoreScreen(
+                                onBack = { currentScreen = Screen.SETTINGS },
+                                viewModel = expenseViewModel
                             )
                         }
                         Screen.CATEGORY_SETTINGS -> {

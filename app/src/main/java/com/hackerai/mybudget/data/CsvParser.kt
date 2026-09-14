@@ -14,11 +14,11 @@ object CsvParser {
         
         try {
             // Skip header
-            reader.readLine()
+            val firstLine = reader.readLine()
             
             var line: String? = reader.readLine()
             while (line != null) {
-                if (line.isNotBlank()) {
+                if (line.isNotBlank() && !line.startsWith("Date,Amount", ignoreCase = true)) {
                     try {
                         // Use a regex that handles commas inside quotes
                         val tokens = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)".toRegex())

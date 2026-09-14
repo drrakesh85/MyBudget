@@ -108,13 +108,21 @@ class ExpenseRepository(
     suspend fun importFromCsv() = withContext(Dispatchers.IO) {
         try {
             val inputStream = context.assets.open("expensemanager.csv")
+            importFromStream(inputStream)
+        } catch (e: Exception) {
+            Log.w("ExpenseRepository", "Default CSV import failed", e)
+        }
+    }
+
+    suspend fun importFromStream(inputStream: java.io.InputStream) = withContext(Dispatchers.IO) {
+        try {
             val csvExpenses = CsvParser.parse(inputStream)
             if (csvExpenses.isNotEmpty()) {
                 val now = System.currentTimeMillis()
                 expenseDao.insertAll(csvExpenses.map { it.copy(lastModified = now).toEntity(isPendingReview = false) })
             }
         } catch (e: Exception) {
-            Log.w("ExpenseRepository", "CSV import failed", e)
+            Log.e("ExpenseRepository", "Stream import failed", e)
         }
     }
 

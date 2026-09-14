@@ -128,7 +128,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     if (name.contains("Cash", ignoreCase = true) || name.contains("PayTM", ignoreCase = true) || name.contains("Wallet", ignoreCase = true)) {
                         accountRepository.addAccount(com.hackerai.mybudget.data.CashAccount(UUID.randomUUID().toString(), name))
                     } else if (name.contains("Card", ignoreCase = true)) {
-                        accountRepository.addAccount(com.hackerai.mybudget.data.CreditCardAccount(UUID.randomUUID().toString(), name, name, "0000", "01/99", 1, 1))
+                        accountRepository.addAccount(com.hackerai.mybudget.data.CreditCardAccount(UUID.randomUUID().toString(), name, name, "0000", "01/99", "000", 1, 1))
                     } else {
                         accountRepository.addAccount(com.hackerai.mybudget.data.SavingAccount(UUID.randomUUID().toString(), name, name, "Auto-Imported", "00000000"))
                     }
@@ -146,6 +146,19 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 loadExpenses()
             } catch (e: Exception) {
                 _uiState.value = BudgetUiState.Error(e.message ?: "Failed to import CSV")
+            }
+        }
+    }
+
+    fun importFromStream(inputStream: java.io.InputStream, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.value = BudgetUiState.Loading
+            try {
+                repository.importFromStream(inputStream)
+                loadExpenses()
+                onComplete()
+            } catch (e: Exception) {
+                _uiState.value = BudgetUiState.Error(e.message ?: "Failed to import from stream")
             }
         }
     }
@@ -384,6 +397,69 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val csv = repository.generateCsvData()
             onResult(csv)
+        }
+    }
+
+    fun exportAppData(categories: Boolean, tags: Boolean, payers: Boolean, payees: Boolean, onResult: (String) -> Unit) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            val sb = StringBuilder()
+            sb.append("Type,Value1,Value2,Value3\n")
+            
+            if (categories) {
+                _categorySubcategoryMap.value.forEach { (cat, subs) ->
+                    if (subs.isEmpty()) {
+                        sb.append("CATEGORY,\"$cat\",\"\",\"Expense\"\n")
+                    } else {
+                        subs.forEach { sub ->
+                            sb.append("CATEGORY,\"$cat\",\"$sub\",\"Expense\"\n")
+                        }
+                    }
+                }
+            }
+            if (tags) {
+                _tags.value.forEach { sb.append("TAG,\"$it\",\"\",\"\"\n") }
+            }
+            if (payees) {
+                _payees.value.forEach { sb.append("PAYEE,\"$it\",\"\",\"\"\n") }
+            }
+            if (payers) {
+                _payees.value.forEach { sb.append("PAYER,\"$it\",\"\",\"\"\n") }
+            }
+            val result = sb.toString()
+            android.util.Log.d("Backup", "Generated CSV with ${result.length} characters")
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                onResult(result)
+            }
+        }
+    }
+
+    fun importAppData(csvContent: String, categories: Boolean, tags: Boolean, payers: Boolean, payees: Boolean, onComplete: () -> Unit) {
+        viewModelScope.launch {
+            val lines = csvContent.lines()
+            android.util.Log.d("Restore", "Importing CSV with ${lines.size} lines")
+            if (lines.size <= 1) {
+                onComplete()
+                return@launch
+            }
+            
+            lines.drop(1).forEach { line ->
+                if (line.isBlank()) return@forEach
+                val tokens = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)".toRegex())
+                    .map { it.trim().removeSurrounding("\"") }
+                if (tokens.size >= 2) {
+                    val type = tokens[0]
+                    when (type) {
+                        "CATEGORY" -> if (categories) repository.addDummyTransaction(tokens[1], tokens.getOrNull(2) ?: "", tokens.getOrNull(3) ?: "Expense")
+                        "TAG" -> if (tags) repository.addDummyTag(tokens[1])
+                        "PAYEE", "PAYER" -> if ((type == "PAYEE" && payees) || (type == "PAYER" && payers)) {
+                            val dummy = Expense.createEmpty().copy(payeePayer = tokens[1], amount = 0.0, status = "system")
+                            repository.saveExpense(dummy)
+                        }
+                    }
+                }
+            }
+            loadExpenses()
+            onComplete()
         }
     }
 

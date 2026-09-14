@@ -31,7 +31,8 @@ import kotlin.math.abs
 @Composable
 fun CategorySummaryScreen(
     viewModel: ExpenseViewModel = viewModel(),
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onCategoryClick: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val selectedAccount by viewModel.selectedAccount.collectAsState()
@@ -147,7 +148,9 @@ fun CategorySummaryScreen(
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(categoryData) { data ->
-                            CategorySummaryItem(data)
+                            CategorySummaryItem(data) {
+                                onCategoryClick(data.name)
+                            }
                         }
                     }
                 }
@@ -176,8 +179,8 @@ private fun filterExpenses(
 }
 
 @Composable
-fun CategorySummaryItem(data: CategorySummaryData) {
-    Column {
+fun CategorySummaryItem(data: CategorySummaryData, onClick: () -> Unit) {
+    Column(modifier = Modifier.clickable { onClick() }) {
         Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Surface(modifier = Modifier.size(40.dp), shape = CircleShape, color = data.color.copy(alpha = 0.8f)) {
                 Box(contentAlignment = Alignment.Center) {

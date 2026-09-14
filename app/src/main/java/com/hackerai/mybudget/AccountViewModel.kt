@@ -79,7 +79,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     if (name.contains("Cash", ignoreCase = true) || name.contains("PayTM", ignoreCase = true) || name.contains("Wallet", ignoreCase = true)) {
                         addCashAccount(name)
                     } else if (name.contains("Card", ignoreCase = true)) {
-                        addCreditCardAccount(name, name, "0000", "01/99", 1, 1)
+                        addCreditCardAccount(name, name, "0000", "01/99", "000", 1, 1)
                     } else {
                         addSavingAccount(name, name, "Auto-Imported", "00000000")
                     }
@@ -98,8 +98,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         repository.addAccount(account)
     }
 
-    fun addCreditCardAccount(nickName: String, bankName: String, cardNumber: String, expiry: String, billingDate: Int, dueDate: Int) {
-        val account = CreditCardAccount(UUID.randomUUID().toString(), nickName, bankName, cardNumber, expiry, billingDate, dueDate)
+    fun addCreditCardAccount(nickName: String, bankName: String, cardNumber: String, expiry: String, cvv: String, billingDate: Int, dueDate: Int) {
+        val account = CreditCardAccount(UUID.randomUUID().toString(), nickName, bankName, cardNumber, expiry, cvv, billingDate, dueDate)
         repository.addAccount(account)
     }
 

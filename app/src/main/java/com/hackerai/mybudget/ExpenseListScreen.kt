@@ -134,7 +134,11 @@ fun ExpenseListScreen(
                     .background(Color(0xFFF5F5F5))
             ) {
                 // Quick Action Grid
-                QuickActionGrid(onNavigateToAccountSummary, onNavigateToSummary, onNavigateToCalendar)
+                QuickActionGrid(
+                    onAccountSummary = onNavigateToAccountSummary,
+                    onSummary = onNavigateToSummary,
+                    onCalendar = onNavigateToCalendar
+                )
 
                 // Current Balance Card
                 Card(
@@ -223,7 +227,7 @@ fun ExpenseListScreen(
 }
 
 @Composable
-fun QuickActionGrid(onAccounts: () -> Unit, onSummary: () -> Unit, onCalendar: () -> Unit) {
+fun QuickActionGrid(onAccountSummary: () -> Unit, onSummary: () -> Unit, onCalendar: () -> Unit) {
     Column(modifier = Modifier.padding(8.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
             ActionItem("Summary", Icons.Default.Description, Modifier.weight(1f)) { onSummary() }
@@ -235,7 +239,10 @@ fun QuickActionGrid(onAccounts: () -> Unit, onSummary: () -> Unit, onCalendar: (
             ActionItem("Calendar", Icons.Default.CalendarToday, Modifier.weight(1f)) { onCalendar() }
             ActionItem("Chart", Icons.Default.BarChart, Modifier.weight(1f)) {}
             ActionItem("Transfer", Icons.Default.SyncAlt, Modifier.weight(1f)) {}
-            ActionItem("More...", Icons.Default.MoreHoriz, Modifier.weight(1f)) { /* Original More Action */ }
+            ActionItem("More...", Icons.Default.MoreHoriz, Modifier.weight(1f)) { 
+                android.util.Log.d("QuickActionGrid", "More... clicked")
+                onAccountSummary() 
+            }
         }
     }
 }
@@ -245,7 +252,8 @@ fun ActionItem(label: String, icon: ImageVector, modifier: Modifier, onClick: ()
     Column(
         modifier = modifier
             .padding(4.dp)
-            .clickable { onClick() },
+            .clickable { onClick() }
+            .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(icon, contentDescription = label, tint = Color(0xFF00796B), modifier = Modifier.size(24.dp))
