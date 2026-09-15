@@ -3,6 +3,7 @@ package com.hackerai.mybudget.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -28,11 +29,11 @@ fun PeriodNavigationBar(timeFilter: String, currentOffset: Int, onOffsetChange: 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = { onOffsetChange(currentOffset - 1) }) {
-            Icon(Icons.Default.ChevronLeft, contentDescription = "Prev", tint = Color.White)
+            Icon(Icons.Default.ChevronLeft, contentDescription = "Prev", tint = Color.White.copy(alpha = 0.9f))
         }
         
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -44,13 +45,24 @@ fun PeriodNavigationBar(timeFilter: String, currentOffset: Int, onOffsetChange: 
             }
             val text = if (period.first != null && period.second != null) {
                 "${period.first!!.format(formatter)} - ${period.second!!.format(formatter)}"
-            } else ""
+            } else "All Records"
             
-            Text(text = text, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Surface(
+                color = Color.White.copy(alpha = 0.15f),
+                shape = CircleShape
+            ) {
+                Text(
+                    text = text,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
         }
 
         IconButton(onClick = { onOffsetChange(currentOffset + 1) }) {
-            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color.White)
+            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color.White.copy(alpha = 0.9f))
         }
     }
 }
@@ -58,16 +70,19 @@ fun PeriodNavigationBar(timeFilter: String, currentOffset: Int, onOffsetChange: 
 @Composable
 fun TimeFilterChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.padding(horizontal = 4.dp).clickable { onClick() },
-        color = if (isSelected) Color(0xFF00897B) else Color.Transparent,
-        shape = MaterialTheme.shapes.small,
-        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00897B))
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .clickable { onClick() },
+        color = if (isSelected) Color(0xFF00796B) else Color.Transparent,
+        shape = CircleShape,
+        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00796B).copy(alpha = 0.3f))
     ) {
         Text(
             text = label,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            color = if (isSelected) Color.White else Color(0xFF00897B),
-            fontSize = 12.sp
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            color = if (isSelected) Color.White else Color(0xFF00796B),
+            fontSize = 12.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
         )
     }
 }
@@ -78,11 +93,26 @@ fun BottomSummaryBarFiltered(filtered: List<Expense>) {
     val expense = filtered.filter { it.amount < 0 }.sumOf { it.amount }
     val balance = income + expense
     
-    Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFFE0E0E0), shadowElevation = 8.dp) {
-        Row(modifier = Modifier.padding(8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-            SummaryField("Income", income, Color(0xFF2E7D32))
-            SummaryField("Expense", expense, Color.Red)
-            SummaryField("Balance (-/+)", balance, if (balance >= 0) Color(0xFF2E7D32) else Color.Red)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White,
+        shadowElevation = 16.dp,
+        tonalElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(vertical = 12.dp, horizontal = 8.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            SummaryField("INCOME", income, Color(0xFF2E7D32))
+            SummaryField("EXPENSE", expense, Color(0xFFC62828))
+            val balanceColor = when {
+                balance > 0 -> Color(0xFF2E7D32)
+                balance < 0 -> Color(0xFFC62828)
+                else -> Color.Gray
+            }
+            SummaryField("BALANCE", balance, balanceColor)
         }
     }
 }
@@ -90,8 +120,19 @@ fun BottomSummaryBarFiltered(filtered: List<Expense>) {
 @Composable
 fun SummaryField(label: String, amount: Double, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 12.sp, color = Color.Gray)
-        Text(formatSummaryAmount(amount), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            color = Color.Gray,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+        Text(
+            text = formatSummaryAmount(amount),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = color
+        )
     }
 }
 

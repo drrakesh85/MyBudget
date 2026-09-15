@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -31,17 +32,40 @@ import java.util.*
 fun AccountSummaryScreen(
     viewModel: ExpenseViewModel = viewModel(),
     onBack: () -> Unit,
-    onManageAccounts: () -> Unit,
-    onNavigateToBrowser: () -> Unit = {}
+    onManageAccounts: () -> Unit
 ) {
     val selectedAccountName by viewModel.selectedAccount.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     
-    var timeFilter by remember { mutableStateOf("Monthly") }
+    var timeFilter by remember { mutableStateOf("All") }
     var periodOffset by remember { mutableIntStateOf(0) }
     var showDatePicker by remember { mutableStateOf(false) }
     var isSearchMode by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var showFilters by remember { mutableStateOf(false) }
+
+    val dateRange by viewModel.dateRange.collectAsState()
+    val accounts by viewModel.accounts.collectAsState()
+    val categories by viewModel.categories.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val selectedType by viewModel.selectedType.collectAsState()
+
+    // Sync with Activity links: Detect the intended period from the range duration
+    LaunchedEffect(dateRange) {
+        val start = dateRange.first
+        val end = dateRange.second
+        if (start != null && end != null) {
+            val durationDays = (end - start) / (24 * 60 * 60 * 1000L)
+            timeFilter = when {
+                durationDays <= 1 -> "All" // Today/Day view
+                durationDays <= 7 -> "Weekly"
+                durationDays <= 31 -> "Monthly"
+                durationDays <= 366 -> "Yearly"
+                else -> "All"
+            }
+            periodOffset = 0
+        }
+    }
 
     val allExpenses = (uiState as? BudgetUiState.Success)?.expenses ?: emptyList()
 
@@ -55,32 +79,43 @@ fun AccountSummaryScreen(
         }
     }
 
-    val rangeText = remember(currentRange) {
-        if (currentRange.first != null && currentRange.second != null) {
+    val rangeText = remember(currentRange, dateRange) {
+        if (dateRange.first != null && dateRange.second != null) {
+            val start = java.time.Instant.ofEpochMilli(dateRange.first!!).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            val end = java.time.Instant.ofEpochMilli(dateRange.second!!).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            val fmt = DateTimeFormatter.ofPattern("dd-MM")
+            "${start.format(fmt)} - ${end.format(fmt)}"
+        } else if (currentRange.first != null && currentRange.second != null) {
             val formatter = DateTimeFormatter.ofPattern("dd-MM")
             "${currentRange.first!!.format(formatter)} - ${currentRange.second!!.format(formatter)}"
         } else "All Time"
     }
 
-    // Filter and Sort all expenses for this account to calculate running balance correctly
+    // Filter and Sort
     val accountExpenses = remember(allExpenses, selectedAccountName) {
-        allExpenses.filter { it.account == selectedAccountName }
+        allExpenses.filter { selectedAccountName == null || it.account == selectedAccountName || (it.transactionType == "Transfer" && it.toAccount == selectedAccountName) }
             .sortedWith(compareBy({ parseDateLocal(it.date) }, { it.time }, { it.rowId }))
     }
 
-    // Map of rowId to running balance
-    val runningBalances = remember(accountExpenses) {
+    val runningBalances = remember(accountExpenses, selectedAccountName) {
         var current = 0.0
         accountExpenses.associate { exp ->
-            current += exp.amount
+            val actualAmount = if (exp.transactionType == "Transfer" && exp.toAccount == selectedAccountName) {
+                kotlin.math.abs(exp.amount)
+            } else {
+                exp.amount
+            }
+            current += actualAmount
             exp.rowId to current
         }
     }
 
-    // Filter for current view period
-    val visibleExpenses = remember(accountExpenses, currentRange, searchQuery) {
+    val visibleExpenses = remember(accountExpenses, currentRange, dateRange, searchQuery, selectedCategory, selectedType) {
         accountExpenses.filter { exp ->
-            val dateMatches = if (currentRange.first != null && currentRange.second != null) {
+            val dateMatches = if (dateRange.first != null && dateRange.second != null) {
+                val expDateMillis = parseDate(exp.date) ?: 0L
+                expDateMillis in dateRange.first!!..dateRange.second!!
+            } else if (currentRange.first != null && currentRange.second != null) {
                 val expDate = parseDateLocal(exp.date)
                 expDate != null && !expDate.isBefore(currentRange.first) && !expDate.isAfter(currentRange.second)
             } else true
@@ -92,12 +127,14 @@ fun AccountSummaryScreen(
                 exp.subcategory.contains(searchQuery, ignoreCase = true) ||
                 exp.description.contains(searchQuery, ignoreCase = true)
             } else true
+            
+            val categoryMatches = selectedCategory == null || exp.category == selectedCategory
+            val typeMatches = selectedType == null || exp.transactionType == selectedType
 
-            dateMatches && searchMatches
+            dateMatches && searchMatches && categoryMatches && typeMatches
         }.sortedWith(compareByDescending<Expense> { parseDateLocal(it.date) }.thenByDescending { it.time }.thenByDescending { it.rowId })
     }
 
-    // Grouping for the list
     val groupedExpenses = remember(visibleExpenses) {
         visibleExpenses.groupBy { it.date }
     }
@@ -158,7 +195,7 @@ fun AccountSummaryScreen(
                             IconButton(onClick = { isSearchMode = true }) {
                                 Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                             }
-                            IconButton(onClick = { /* Filter */ }) {
+                            IconButton(onClick = { showFilters = true }) {
                                 Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = Color.White)
                             }
                         },
@@ -166,7 +203,6 @@ fun AccountSummaryScreen(
                     )
                 }
 
-                // Period Selector (Week, Month, Year, All, Calendar)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -174,18 +210,28 @@ fun AccountSummaryScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PeriodButton("Week", timeFilter == "Weekly") { timeFilter = "Weekly"; periodOffset = 0 }
-                    PeriodButton("Month", timeFilter == "Monthly") { timeFilter = "Monthly"; periodOffset = 0 }
-                    PeriodButton("Year", timeFilter == "Yearly") { timeFilter = "Yearly"; periodOffset = 0 }
-                    PeriodButton("All", timeFilter == "All") { timeFilter = "All"; periodOffset = 0 }
-                    
-                    Spacer(modifier = Modifier.weight(1f))
+                    PeriodButton("Week", timeFilter == "Weekly", Modifier.weight(1f)) { 
+                        viewModel.setDateRange(null, null)
+                        timeFilter = "Weekly"; periodOffset = 0 
+                    }
+                    PeriodButton("Month", timeFilter == "Monthly", Modifier.weight(1f)) { 
+                        viewModel.setDateRange(null, null)
+                        timeFilter = "Monthly"; periodOffset = 0 
+                    }
+                    PeriodButton("Year", timeFilter == "Yearly", Modifier.weight(1f)) { 
+                        viewModel.setDateRange(null, null)
+                        timeFilter = "Yearly"; periodOffset = 0 
+                    }
+                    PeriodButton("All", timeFilter == "All", Modifier.weight(1f)) { 
+                        viewModel.setDateRange(null, null)
+                        timeFilter = "All"; periodOffset = 0 
+                    }
                     
                     IconButton(
                         onClick = { showDatePicker = true },
                         modifier = Modifier
                             .size(36.dp)
-                            .background(Color.White.copy(alpha = 0.2f), MaterialTheme.shapes.small)
+                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
                     ) {
                         Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
@@ -194,6 +240,16 @@ fun AccountSummaryScreen(
         },
         bottomBar = {
             BottomSummaryBarFiltered(visibleExpenses)
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { viewModel.addNewExpense(selectedAccountName) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                shape = CircleShape
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Transaction")
+            }
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF5F5F5))) {
@@ -213,6 +269,7 @@ fun AccountSummaryScreen(
                                 TransactionListItem(
                                     expense = expense,
                                     closingBalance = runningBalances[expense.rowId] ?: 0.0,
+                                    selectedAccount = selectedAccountName,
                                     onClick = { viewModel.editExpense(expense) }
                                 )
                             }
@@ -234,6 +291,23 @@ fun AccountSummaryScreen(
             }
         }
 
+        if (showFilters) {
+            FilterDialog(
+                accounts = accounts,
+                categories = categories,
+                selectedAccount = selectedAccountName,
+                selectedCategory = selectedCategory,
+                selectedType = selectedType,
+                onDismiss = { showFilters = false },
+                onApply = { acc, cat, type ->
+                    viewModel.filterByAccount(acc)
+                    viewModel.filterByCategory(cat)
+                    viewModel.filterByType(type)
+                    showFilters = false
+                }
+            )
+        }
+
         if (showDatePicker) {
             DatePickerDialog(
                 onDismissRequest = { showDatePicker = false },
@@ -242,7 +316,7 @@ fun AccountSummaryScreen(
                         val start = datePickerState.selectedStartDateMillis
                         val end = datePickerState.selectedEndDateMillis
                         if (start != null && end != null) {
-                            timeFilter = "Custom"
+                            viewModel.setDateRange(start, end)
                         }
                         showDatePicker = false
                     }) { Text("OK") }
@@ -255,22 +329,21 @@ fun AccountSummaryScreen(
 }
 
 @Composable
-fun PeriodButton(label: String, isSelected: Boolean, onClick: () -> Unit) {
+fun PeriodButton(label: String, isSelected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier
-            .width(80.dp)
-            .height(32.dp)
+        modifier = modifier
+            .height(34.dp)
             .clickable { onClick() },
-        color = if (isSelected) Color(0xFFE0E0E0) else Color.White.copy(alpha = 0.1f),
-        shape = MaterialTheme.shapes.small,
-        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+        color = if (isSelected) Color.White.copy(alpha = 0.2f) else Color.Transparent,
+        shape = CircleShape,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)) else null
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = label,
-                color = if (isSelected) Color.Black else Color.White,
-                fontSize = 14.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium
             )
         }
     }
@@ -284,90 +357,124 @@ fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double) {
     val income = dayExpenses.filter { it.amount > 0 }.sumOf { it.amount }
     val expense = dayExpenses.filter { it.amount < 0 }.sumOf { it.amount }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFE0E0E0))
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFFEEEEEE),
+        tonalElevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "$date $dayName",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.DarkGray
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF546E7A),
+                letterSpacing = 0.5.sp
             )
             
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (income != 0.0) {
-                    Text(formatSimple(income), color = Color(0xFF2E7D32), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(formatSimple(income), color = Color(0xFF2E7D32), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 if (expense != 0.0) {
-                    Text(formatSimple(expense), color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(formatSimple(expense), color = Color(0xFFC62828), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
-                Text(
-                    text = formatSimple(dayEndBalance),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    color = Color.Black,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
+                Surface(
+                    color = Color.White.copy(alpha = 0.5f),
+                    shape = MaterialTheme.shapes.extraSmall
+                ) {
+                    Text(
+                        text = formatSimple(dayEndBalance),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 11.sp,
+                        color = Color.Black,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun TransactionListItem(expense: Expense, closingBalance: Double, onClick: () -> Unit) {
-    Column(
+fun TransactionListItem(expense: Expense, closingBalance: Double, selectedAccount: String?, onClick: () -> Unit) {
+    val isTransfer = expense.transactionType == "Transfer"
+    val isIncomingTransfer = isTransfer && expense.toAccount == selectedAccount
+    val displayAmount = if (isIncomingTransfer) kotlin.math.abs(expense.amount) else expense.amount
+
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable { onClick() },
+        color = Color.White
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } }.lowercase(),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "${expense.category}:${expense.subcategory}",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-            }
-            
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = formatSimple(expense.amount),
-                    color = if (expense.amount < 0) Color.Red else Color(0xFF2E7D32),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        Column {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    val title = if (isIncomingTransfer) {
+                        "Incoming from ${expense.account}"
+                    } else if (isTransfer) {
+                        "Transfer to ${expense.toAccount}"
+                    } else {
+                        expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } }
+                    }
+
                     Text(
-                        text = expense.status.ifEmpty { "clear" },
-                        fontSize = 11.sp,
-                        color = Color.Gray
+                        text = title,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF263238)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = formatSimple(closingBalance),
-                        fontSize = 11.sp,
+                        text = "${expense.category} : ${expense.subcategory}",
+                        fontSize = 12.sp,
                         color = Color.Gray,
                         fontWeight = FontWeight.Medium
                     )
                 }
+                
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = formatSimple(displayAmount),
+                        color = if (displayAmount < 0) Color(0xFFC62828) else Color(0xFF2E7D32),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = Color(0xFFF5F5F5),
+                            shape = CircleShape,
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Text(
+                                text = (if (isIncomingTransfer) "RECEIVED" else expense.status.ifEmpty { "clear" }).uppercase(),
+                                fontSize = 9.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Text(
+                            text = formatSimple(closingBalance),
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                thickness = 0.5.dp,
+                color = Color.LightGray.copy(alpha = 0.2f)
+            )
         }
-        HorizontalDivider(modifier = Modifier.padding(top = 8.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
     }
 }
 
@@ -384,4 +491,14 @@ private fun formatSimple(amount: Double): String {
     formatter.minimumFractionDigits = 2
     formatter.maximumFractionDigits = 2
     return formatter.format(amount)
+}
+
+private fun parseDate(dateStr: String): Long? {
+    if (dateStr.isBlank() || dateStr == "Date") return null
+    return try {
+        LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("dd-MM-yyyy"))
+            .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+    } catch (e: Exception) {
+        null
+    }
 }

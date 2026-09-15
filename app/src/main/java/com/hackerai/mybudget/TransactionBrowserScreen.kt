@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -118,12 +119,13 @@ fun TransactionBrowserScreen(
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color.White)) {
+        Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF8F9FA))) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Quick Date Filters
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     QuickFilterChip("Week", dateRange, viewModel) { getWeekRange() }
                     QuickFilterChip("Month", dateRange, viewModel) { getMonthRange() }
@@ -131,18 +133,21 @@ fun TransactionBrowserScreen(
                     FilterChip(
                         selected = dateRange.first == null && dateRange.second == null,
                         onClick = { viewModel.setDateRange(null, null) },
-                        label = { Text("All") }
+                        label = { Text("All", fontSize = 12.sp) }
                     )
-                    IconButton(onClick = { showDatePicker = true }) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = "Custom Range")
+                    IconButton(
+                        onClick = { showDatePicker = true },
+                        modifier = Modifier.size(32.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.CalendarMonth, contentDescription = "Custom Range", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     }
                 }
 
-                HorizontalDivider(thickness = 0.5.dp)
+                HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.5f))
 
                 when (val state = uiState) {
-                    is BudgetUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-                    is BudgetUiState.Error -> Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
+                    is BudgetUiState.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    is BudgetUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error) }
                     is BudgetUiState.Success -> {
                         val filteredList = state.expenses.filter { expense ->
                             val dateMatches = if (dateRange.first != null && dateRange.second != null) {
@@ -167,7 +172,7 @@ fun TransactionBrowserScreen(
 
                         if (filteredList.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No transactions found")
+                                Text("No transactions found", color = Color.Gray)
                             }
                         } else {
                             val grouped = filteredList.groupBy { it.date }
@@ -246,55 +251,78 @@ fun DateHeader(dateStr: String) {
             dateStr
         }
     }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFE0E0E0))
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFFEEEEEE),
+        tonalElevation = 1.dp
     ) {
-        Text(text = formatted, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            Text(text = formatted, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF546E7A), letterSpacing = 0.5.sp)
+        }
     }
 }
 
 @Composable
 fun DetailedExpenseItem(expense: Expense, onClick: () -> Unit) {
-    Column(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable { onClick() },
+        color = Color.White
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } },
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "${expense.category}:${expense.subcategory}",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-                if (expense.time.isNotBlank()) {
-                    Text(text = expense.time, fontSize = 11.sp, color = Color.LightGray)
+        Column {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF263238)
+                    )
+                    Text(
+                        text = "${expense.category} : ${expense.subcategory}",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (expense.time.isNotBlank()) {
+                        Text(text = expense.time, fontSize = 11.sp, color = Color.LightGray, fontWeight = FontWeight.Normal)
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = formatBrowserAmount(expense.amount),
+                        color = if (expense.amount < 0) Color(0xFFC62828) else Color(0xFF2E7D32),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp
+                    )
+                    Surface(
+                        color = Color(0xFFF5F5F5),
+                        shape = CircleShape,
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Text(
+                            text = expense.status.ifEmpty { "clear" }.uppercase(),
+                            fontSize = 9.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = formatBrowserAmount(expense.amount),
-                    color = if (expense.amount < 0) Color.Red else Color(0xFF2E7D32),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = expense.status.ifEmpty { "clear" },
-                    fontSize = 11.sp,
-                    color = Color.Gray
-                )
-            }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                thickness = 0.5.dp,
+                color = Color.LightGray.copy(alpha = 0.2f)
+            )
         }
-        HorizontalDivider(modifier = Modifier.padding(top = 8.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
     }
 }
 
@@ -314,7 +342,7 @@ fun QuickFilterChip(label: String, currentRange: Pair<Long?, Long?>, viewModel: 
             if (isSelected) viewModel.setDateRange(null, null)
             else viewModel.setDateRange(range.first, range.second)
         },
-        label = { Text(label) }
+        label = { Text(label, fontSize = 12.sp) }
     )
 }
 

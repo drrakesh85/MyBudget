@@ -42,186 +42,162 @@ fun ExpenseListScreen(
     onNavigateToSmsImport: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val editingExpense by viewModel.editingExpense.collectAsState()
     val accountNames by viewModel.accounts.collectAsState()
-    val payees by viewModel.payees.collectAsState()
-    val categories by viewModel.categories.collectAsState()
-    val subcategories by viewModel.subcategories.collectAsState()
-    val tags by viewModel.tags.collectAsState()
-    val tagMap by viewModel.tagMap.collectAsState()
-    val payeeMap by viewModel.payeeMap.collectAsState()
-    val categorySubcategoryMap by viewModel.categorySubcategoryMap.collectAsState()
     val currentBalance by viewModel.currentBalance.collectAsState()
     val summaryData by viewModel.summaryData.collectAsState()
     val selectedAccount by viewModel.selectedAccount.collectAsState()
 
-    if (editingExpense != null) {
-        ReviewExpenseScreen(
-            expense = editingExpense!!,
-            accounts = accountNames,
-            payees = payees,
-            categories = categories,
-            subcategories = subcategories,
-            tags = tags,
-            tagMap = tagMap,
-            payeeMap = payeeMap,
-            categorySubcategoryMap = categorySubcategoryMap,
-            onSave = { viewModel.saveReviewedExpense(it) },
-            onCancel = { viewModel.cancelReview() }
-        )
-    } else {
-        Scaffold(
-            topBar = {
-                Column(modifier = Modifier.background(MaterialTheme.colorScheme.primary)) {
-                    TopAppBar(
-                        title = { Text(selectedAccount ?: "All (INR)", color = Color.White) },
-                        navigationIcon = {
-                            IconButton(onClick = onNavigateToSettings) {
-                                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
-                            }
-                        },
-                        actions = {
-                            IconButton(onClick = onNavigateToSmsImport) {
-                                Icon(Icons.Default.Sms, contentDescription = "Scan SMS", tint = Color.White)
-                            }
-                            IconButton(onClick = onNavigateToBrowser) {
-                                Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
-                            }
-                            IconButton(onClick = onNavigateToAccounts) {
-                                Icon(Icons.AutoMirrored.Filled.List, contentDescription = "View Accounts", tint = Color.White)
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                    )
-                    
-                    ScrollableTabRow(
-                        selectedTabIndex = if (selectedAccount == null) 0 else accountNames.indexOf(selectedAccount) + 1,
-                        containerColor = Color.Transparent,
-                        contentColor = Color.White,
-                        edgePadding = 16.dp,
-                        divider = {}
-                    ) {
-                        Tab(
-                            selected = selectedAccount == null,
-                            onClick = { viewModel.filterByAccount(null) },
-                            text = { Text("ALL") }
-                        )
-                        accountNames.forEach { name ->
-                            Tab(
-                                selected = selectedAccount == name,
-                                onClick = { viewModel.filterByAccount(name) },
-                                text = { Text(name.uppercase()) }
-                            )
+    Scaffold(
+        topBar = {
+            Column(modifier = Modifier.background(MaterialTheme.colorScheme.primary)) {
+                TopAppBar(
+                    title = { Text(selectedAccount ?: "All (INR)", color = Color.White) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
                         }
-                    }
-                }
-            },
-            floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { viewModel.addNewExpense() },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Transaction")
-                }
-            }
-        ) { paddingValues ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .verticalScroll(rememberScrollState())
-                    .background(Color(0xFFF5F5F5))
-            ) {
-                // Quick Action Grid
-                QuickActionGrid(
-                    onAccountSummary = onNavigateToAccountSummary,
-                    onSummary = onNavigateToSummary,
-                    onCalendar = onNavigateToCalendar
+                    },
+                    actions = {
+                        IconButton(onClick = onNavigateToSmsImport) {
+                            Icon(Icons.Default.Sms, contentDescription = "Scan SMS", tint = Color.White)
+                        }
+                        IconButton(onClick = onNavigateToBrowser) {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                        }
+                        IconButton(onClick = onNavigateToAccounts) {
+                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = "View Accounts", tint = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
-
-                // Current Balance Card
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                
+                ScrollableTabRow(
+                    selectedTabIndex = if (selectedAccount == null) 0 else accountNames.indexOf(selectedAccount) + 1,
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White,
+                    edgePadding = 16.dp,
+                    divider = {}
                 ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Current Balance", style = MaterialTheme.typography.bodyLarge)
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(
-                            formatAmount(currentBalance),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color(0xFF2E7D32),
-                            fontWeight = FontWeight.Bold
+                    Tab(
+                        selected = selectedAccount == null,
+                        onClick = { viewModel.filterByAccount(null) },
+                        text = { Text("ALL") }
+                    )
+                    accountNames.forEach { name ->
+                        Tab(
+                            selected = selectedAccount == name,
+                            onClick = { viewModel.filterByAccount(name) },
+                            text = { Text(name.uppercase()) }
                         )
                     }
                 }
+            }
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { viewModel.addNewExpense(selectedAccount) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Transaction")
+            }
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .background(Color(0xFFF5F5F5))
+        ) {
+            // Quick Action Grid
+            QuickActionGrid(
+                onAccountSummary = onNavigateToAccountSummary,
+                onSummary = onNavigateToSummary,
+                onCalendar = onNavigateToCalendar
+            )
 
-                // Activity Summaries
-                SummaryRow("Today", summaryData["Today"] ?: Triple(0.0, 0.0, 0.0)) {
-                    val range = getDayRange()
-                    viewModel.setDateRange(range.first, range.second)
-                    onNavigateToBrowser()
+            // Current Balance Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Current Balance", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        formatAmount(currentBalance),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color(0xFF2E7D32),
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-                SummaryRow("This Week", summaryData["This Week"] ?: Triple(0.0, 0.0, 0.0)) {
-                    val range = getWeekRangeInternal()
-                    viewModel.setDateRange(range.first, range.second)
-                    onNavigateToBrowser()
-                }
-                SummaryRow("This Month", summaryData["This Month"] ?: Triple(0.0, 0.0, 0.0)) {
-                    val range = getMonthRangeInternal()
-                    viewModel.setDateRange(range.first, range.second)
-                    onNavigateToBrowser()
-                }
-                SummaryRow("Year to Date", summaryData["Year to Date"] ?: Triple(0.0, 0.0, 0.0)) {
-                    val range = getYearRangeInternal()
-                    viewModel.setDateRange(range.first, range.second)
-                    onNavigateToBrowser()
-                }
+            }
 
-                // Recent Transactions Header
-                PaddingText("Recent Transactions")
+            // Activity Summaries
+            SummaryRow("Today", summaryData["Today"] ?: Triple(0.0, 0.0, 0.0)) {
+                val range = getDayRange()
+                viewModel.setDateRange(range.first, range.second)
+                onNavigateToBrowser()
+            }
+            SummaryRow("This Week", summaryData["This Week"] ?: Triple(0.0, 0.0, 0.0)) {
+                val range = getWeekRangeInternal()
+                viewModel.setDateRange(range.first, range.second)
+                onNavigateToBrowser()
+            }
+            SummaryRow("This Month", summaryData["This Month"] ?: Triple(0.0, 0.0, 0.0)) {
+                val range = getMonthRangeInternal()
+                viewModel.setDateRange(range.first, range.second)
+                onNavigateToBrowser()
+            }
+            SummaryRow("Year to Date", summaryData["Year to Date"] ?: Triple(0.0, 0.0, 0.0)) {
+                val range = getYearRangeInternal()
+                viewModel.setDateRange(range.first, range.second)
+                onNavigateToBrowser()
+            }
 
-                // Recent Transactions List
-                when (val state = uiState) {
-                    is BudgetUiState.Success -> {
-                        val filtered = state.expenses.filter { expense ->
-                            selectedAccount == null || expense.account == selectedAccount
-                        }
-                        val list = filtered.take(5)
-                        if (list.isEmpty()) {
-                            Text(
-                                "No transactions",
-                                modifier = Modifier.padding(16.dp),
-                                color = Color.Gray
-                            )
-                        } else {
-                            list.forEach { expense ->
-                                DashboardExpenseItem(expense) {
-                                    viewModel.editExpense(expense)
-                                }
+            // Recent Transactions Header
+            PaddingText("Recent Transactions")
+
+            // Recent Transactions List
+            when (val state = uiState) {
+                is BudgetUiState.Success -> {
+                    val filtered = state.expenses.filter { expense ->
+                        selectedAccount == null || expense.account == selectedAccount
+                    }
+                    val list = filtered.take(5)
+                    if (list.isEmpty()) {
+                        Text(
+                            "No transactions",
+                            modifier = Modifier.padding(16.dp),
+                            color = Color.Gray
+                        )
+                    } else {
+                        list.forEach { expense ->
+                            DashboardExpenseItem(expense) {
+                                viewModel.editExpense(expense)
                             }
                         }
                     }
-                    is BudgetUiState.Loading -> {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
-                    }
-                    is BudgetUiState.Error -> {
-                        Text(
-                            state.message,
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
                 }
-                
-                TrendChartSection()
+                is BudgetUiState.Loading -> {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
+                }
+                is BudgetUiState.Error -> {
+                    Text(
+                        state.message,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
+            
+            TrendChartSection()
         }
     }
 }

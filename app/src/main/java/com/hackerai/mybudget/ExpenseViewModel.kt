@@ -167,11 +167,17 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _uiState.value = BudgetUiState.Loading
             try {
-                val expenses = repository.loadExpenses()
+                val allExpenses = repository.loadExpenses()
                 val pending = repository.loadPendingReviewExpenses()
-                updateAutocompleteLists(expenses)
-                _uiState.value = BudgetUiState.Success(expenses, pending)
-                refreshSummaries(expenses)
+                
+                // Keep system entries for autocomplete dropdowns
+                updateAutocompleteLists(allExpenses)
+                
+                // Filter out system placeholders for the UI display
+                val displayExpenses = allExpenses.filter { it.status != "system" }
+                
+                _uiState.value = BudgetUiState.Success(displayExpenses, pending)
+                refreshSummaries(displayExpenses)
             } catch (e: Exception) {
                 _uiState.value = BudgetUiState.Error(e.message ?: "Failed to load expenses")
             }
@@ -204,9 +210,10 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun refreshSummaries(expenses: List<Expense>) {
-        val filtered = ExpenseSummaryCalculator.filterByAccount(expenses, _selectedAccount.value)
-        _currentBalance.value = ExpenseSummaryCalculator.currentBalance(filtered)
-        _summaryData.value = ExpenseSummaryCalculator.calculateSummaries(filtered)
+        val account = _selectedAccount.value
+        val filtered = ExpenseSummaryCalculator.filterByAccount(expenses, account)
+        _currentBalance.value = ExpenseSummaryCalculator.currentBalance(filtered, account)
+        _summaryData.value = ExpenseSummaryCalculator.calculateSummaries(filtered, account)
     }
 
     fun scanSms() {
@@ -215,10 +222,13 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.value = BudgetUiState.Loading
                 val messages = smsRepository.fetchSmsMessages()
                 val pending = repository.scanAndStoreSmsExpenses(messages)
-                val expenses = repository.loadExpenses()
-                updateAutocompleteLists(expenses)
-                _uiState.value = BudgetUiState.Success(expenses, pending)
-                refreshSummaries(expenses)
+                val allExpenses = repository.loadExpenses()
+                
+                updateAutocompleteLists(allExpenses)
+                val displayExpenses = allExpenses.filter { it.status != "system" }
+                
+                _uiState.value = BudgetUiState.Success(displayExpenses, pending)
+                refreshSummaries(displayExpenses)
             } catch (e: Exception) {
                 _uiState.value = BudgetUiState.Error(e.message ?: "Failed to scan SMS")
             }
@@ -233,8 +243,8 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         _editingExpense.value = expense
     }
 
-    fun addNewExpense() {
-        _editingExpense.value = Expense.createEmpty()
+    fun addNewExpense(defaultAccount: String? = null) {
+        _editingExpense.value = Expense.createEmpty().copy(account = defaultAccount ?: "")
     }
 
     fun filterByAccount(accountName: String?) {
@@ -275,33 +285,76 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun discardMultiple(expenses: List<Expense>) {
+        viewModelScope.launch {
+            repository.discardMultiple(expenses.map { it.rowId })
+            loadExpenses()
+        }
+    }
+
+    fun discardOlderThan(days: Int) {
+        viewModelScope.launch {
+            val date = java.time.LocalDate.now().minusDays(days.toLong())
+            val dateStr = date.format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"))
+            repository.discardOlderThan(dateStr)
+            loadExpenses()
+        }
+    }
+
+    fun discardBetween(start: Long, end: Long) {
+        viewModelScope.launch {
+            val fmt = java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy")
+            val startStr = java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(fmt)
+            val endStr = java.time.Instant.ofEpochMilli(end).atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(fmt)
+            repository.discardBetween(startStr, endStr)
+            loadExpenses()
+        }
+    }
+
+    fun deleteExpense(expense: Expense) {
+        viewModelScope.launch {
+            repository.deleteById(expense.rowId)
+            loadExpenses()
+            _editingExpense.value = null
+        }
+    }
+
     fun saveReviewedExpense(expense: Expense) {
+        saveReviewedExpenses(listOf(expense))
+    }
+
+    fun saveReviewedExpenses(expenses: List<Expense>) {
         viewModelScope.launch {
             val currentState = _uiState.value
             if (currentState !is BudgetUiState.Success) return@launch
             try {
-                val isExisting = currentState.expenses.any { it.rowId == expense.rowId }
-                val wasPending = currentState.pendingSms.any { it.rowId == expense.rowId }
+                var currentExpenses = currentState.expenses
+                var currentPending = currentState.pendingSms
 
-                repository.approveExpense(expense)
+                expenses.forEach { expense ->
+                    val isExisting = currentExpenses.any { it.rowId == expense.rowId }
+                    val wasPending = currentPending.any { it.rowId == expense.rowId }
 
-                val updatedExpenses = if (isExisting || wasPending) {
-                    if (isExisting) {
-                        currentState.expenses.map { if (it.rowId == expense.rowId) expense else it }
+                    repository.approveExpense(expense)
+
+                    currentExpenses = if (isExisting || wasPending) {
+                        if (isExisting) {
+                            currentExpenses.map { if (it.rowId == expense.rowId) expense else it }
+                        } else {
+                            currentExpenses + expense
+                        }
                     } else {
-                        currentState.expenses + expense
+                        currentExpenses + expense
                     }
-                } else {
-                    currentState.expenses + expense
+                    currentPending = currentPending.filter { it.rowId != expense.rowId }
                 }
 
-                updateAutocompleteLists(updatedExpenses)
-                val updatedPending = currentState.pendingSms.filter { it.rowId != expense.rowId }
-                _uiState.value = currentState.copy(expenses = updatedExpenses, pendingSms = updatedPending)
+                updateAutocompleteLists(currentExpenses)
+                _uiState.value = currentState.copy(expenses = currentExpenses, pendingSms = currentPending)
                 _editingExpense.value = null
-                refreshSummaries(updatedExpenses)
+                refreshSummaries(currentExpenses)
             } catch (e: Exception) {
-                _uiState.value = BudgetUiState.Error(e.message ?: "Failed to save expense")
+                _uiState.value = BudgetUiState.Error(e.message ?: "Failed to save expenses")
             }
         }
     }

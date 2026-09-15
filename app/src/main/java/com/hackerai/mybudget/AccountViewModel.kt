@@ -35,9 +35,28 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         expenseRepository.allExpensesFlow()
     ) { accountList, expenseList ->
         accountList.filter { !it.isHidden }.map { account ->
-            val accountExpenses = expenseList.filter { it.account == account.nickName }
-            val income = accountExpenses.filter { it.transactionType == "Income" }.sumOf { it.amount }
-            val expense = accountExpenses.filter { it.transactionType == "Expense" }.sumOf { it.amount }
+            val accountName = account.nickName
+            val relevantExpenses = expenseList.filter { 
+                it.account == accountName || (it.transactionType == "Transfer" && it.toAccount == accountName) 
+            }
+            
+            var income = 0.0
+            var expense = 0.0
+            
+            relevantExpenses.forEach { exp ->
+                if (exp.transactionType == "Transfer") {
+                    if (exp.toAccount == accountName) {
+                        income += kotlin.math.abs(exp.amount)
+                    } else {
+                        expense += exp.amount
+                    }
+                } else if (exp.transactionType == "Income") {
+                    income += exp.amount
+                } else if (exp.transactionType == "Expense") {
+                    expense += exp.amount
+                }
+            }
+
             AccountBalance(account, income, expense, income + expense)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

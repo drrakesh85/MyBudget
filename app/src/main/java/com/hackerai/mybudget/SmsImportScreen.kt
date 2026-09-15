@@ -7,9 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,7 +37,12 @@ fun SmsImportScreen(
     val tabs = listOf("TO IMPORT", "TO REVIEW")
 
     var showDatePicker by remember { mutableStateOf(false) }
+    var showCleanupDialog by remember { mutableStateOf(false) }
+    var showSafetyConfirm by remember { mutableStateOf<(() -> Unit)?>(null) }
+    
     val datePickerState = rememberDateRangePickerState()
+    val cleanupRangePickerState = rememberDateRangePickerState()
+    var showCleanupRangePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(accountFilter) {
         viewModel.setAccountFilter(accountFilter)
@@ -50,13 +53,49 @@ fun SmsImportScreen(
         topBar = {
             Column(modifier = Modifier.background(MaterialTheme.colorScheme.primary)) {
                 TopAppBar(
-                    title = { Text(if (accountFilter != null) "SMS for $accountFilter" else "SMS Management", color = Color.White) },
+                    title = { 
+                        if (selectedTransactions.isNotEmpty()) {
+                            Text("${selectedTransactions.size} selected", color = Color.White)
+                        } else {
+                            Text(if (accountFilter != null) "SMS for $accountFilter" else "SMS Management", color = Color.White)
+                        }
+                    },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        IconButton(onClick = {
+                            if (selectedTransactions.isNotEmpty()) {
+                                viewModel.deselectAll()
+                            } else {
+                                onBack()
+                            }
+                        }) {
+                            Icon(
+                                if (selectedTransactions.isNotEmpty()) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack, 
+                                contentDescription = "Back", 
+                                tint = Color.White
+                            )
                         }
                     },
                     actions = {
+                        if (selectedTransactions.isNotEmpty()) {
+                            IconButton(onClick = { 
+                                val state = uiState
+                                if (state is SmsImportUiState.Success) {
+                                    val ids = selectedTransactions.toList()
+                                    showSafetyConfirm = { 
+                                        if (selectedTabIndex == 0) {
+                                            viewModel.discardSelected { viewModel.scanSms() }
+                                        } else {
+                                            viewModel.discardMultiple(ids)
+                                        }
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Discard Selected", tint = Color.White)
+                            }
+                        }
+                        IconButton(onClick = { showCleanupDialog = true }) {
+                            Icon(Icons.Default.CleaningServices, contentDescription = "Clean Up", tint = Color.White)
+                        }
                         IconButton(onClick = { showDatePicker = true }) {
                             Icon(Icons.Default.CalendarMonth, contentDescription = "Filter by Date", tint = Color.White)
                         }
@@ -133,26 +172,45 @@ fun SmsImportScreen(
             }
         },
         bottomBar = {
-            if (selectedTabIndex == 0 && uiState is SmsImportUiState.Success) {
-                val count = (uiState as SmsImportUiState.Success).toImport.count { selectedTransactions.contains(it.rowId) }
+            if (uiState is SmsImportUiState.Success) {
+                val count = selectedTransactions.size
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = { viewModel.discardSelected { viewModel.scanSms() } },
-                        modifier = Modifier.weight(1f),
-                        enabled = count > 0,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
-                    ) {
-                        Text("Discard ($count)")
-                    }
-                    Button(
-                        onClick = { viewModel.importSelected { viewModel.scanSms() } },
-                        modifier = Modifier.weight(1f),
-                        enabled = count > 0
-                    ) {
-                        Text("Import ($count)")
+                    if (selectedTabIndex == 0) {
+                        OutlinedButton(
+                            onClick = { 
+                                val state = uiState as SmsImportUiState.Success
+                                val selected = state.toImport.filter { selectedTransactions.contains(it.rowId) }
+                                showSafetyConfirm = { viewModel.discardSelected { viewModel.scanSms() } }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = count > 0,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+                        ) {
+                            Text("Discard ($count)")
+                        }
+                        Button(
+                            onClick = { viewModel.importSelected { viewModel.scanSms() } },
+                            modifier = Modifier.weight(1f),
+                            enabled = count > 0
+                        ) {
+                            Text("Import ($count)")
+                        }
+                    } else {
+                        Button(
+                            onClick = { 
+                                val state = uiState as SmsImportUiState.Success
+                                val selected = state.pendingReview.filter { selectedTransactions.contains(it.rowId) }
+                                showSafetyConfirm = { viewModel.discardMultiple(selected.map { it.rowId }) }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = count > 0,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                        ) {
+                            Text("Discard Selected ($count)")
+                        }
                     }
                 }
             }
@@ -190,20 +248,18 @@ fun SmsImportScreen(
                         Text(if (selectedTabIndex == 0) "No new SMS found" else "No transactions pending review", modifier = Modifier.align(Alignment.Center))
                     } else {
                         Column {
-                            if (selectedTabIndex == 0) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("${filtered.size} results", style = MaterialTheme.typography.labelMedium)
-                                    Row {
-                                        TextButton(onClick = { viewModel.selectAll(filtered.map { it.rowId }) }) {
-                                            Text("Select All")
-                                        }
-                                        TextButton(onClick = { viewModel.deselectAll() }) {
-                                            Text("Deselect All")
-                                        }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("${filtered.size} results", style = MaterialTheme.typography.labelMedium)
+                                Row {
+                                    TextButton(onClick = { viewModel.selectAll(filtered.map { it.rowId }) }) {
+                                        Text("Select All")
+                                    }
+                                    TextButton(onClick = { viewModel.deselectAll() }) {
+                                        Text("Deselect All")
                                     }
                                 }
                             }
@@ -219,9 +275,13 @@ fun SmsImportScreen(
                                     } else {
                                         SmsReviewItem(
                                             transaction = transaction,
+                                            isSelected = selectedTransactions.contains(transaction.rowId),
+                                            onToggle = { viewModel.toggleSelection(transaction.rowId) },
                                             onClick = { onReviewTransaction(transaction) },
                                             onMarkReviewed = { viewModel.markAsReviewed(transaction) },
-                                            onDiscard = { viewModel.markAsDiscarded(transaction) }
+                                            onDiscard = { 
+                                                showSafetyConfirm = { viewModel.markAsDiscarded(transaction) }
+                                            }
                                         )
                                     }
                                 }
@@ -231,6 +291,78 @@ fun SmsImportScreen(
                 }
                 else -> {}
             }
+        }
+
+        if (showCleanupDialog) {
+            AlertDialog(
+                onDismissRequest = { showCleanupDialog = false },
+                title = { Text("Clean Up SMS Data") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Discard messages that are no longer needed:")
+                        Button(onClick = { showCleanupDialog = false; showSafetyConfirm = { viewModel.discardOlderThan(7) } }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Older than 7 days")
+                        }
+                        Button(onClick = { showCleanupDialog = false; showSafetyConfirm = { viewModel.discardOlderThan(30) } }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Older than 30 days")
+                        }
+                        Button(onClick = { showCleanupDialog = false; showSafetyConfirm = { viewModel.discardOlderThan(90) } }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Older than 90 days")
+                        }
+                        OutlinedButton(onClick = { showCleanupDialog = false; showCleanupRangePicker = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Custom Date Range")
+                        }
+                        if (searchQuery.isNotBlank() || dateRange.first != null) {
+                            TextButton(onClick = { 
+                                showCleanupDialog = false
+                                showSafetyConfirm = { viewModel.discardAllMatching(searchQuery, dateRange.first, dateRange.second, selectedTabIndex) }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Discard all matching current filter", color = Color.Red)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { showCleanupDialog = false }) { Text("Cancel") } }
+            )
+        }
+
+        if (showCleanupRangePicker) {
+            DatePickerDialog(
+                onDismissRequest = { showCleanupRangePicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val start = cleanupRangePickerState.selectedStartDateMillis
+                        val end = cleanupRangePickerState.selectedEndDateMillis
+                        if (start != null && end != null) {
+                            showCleanupRangePicker = false
+                            showSafetyConfirm = { viewModel.discardBetween(start, end) }
+                        }
+                    }) { Text("OK") }
+                }
+            ) {
+                DateRangePicker(state = cleanupRangePickerState, modifier = Modifier.weight(1f))
+            }
+        }
+
+        showSafetyConfirm?.let { action ->
+            AlertDialog(
+                onDismissRequest = { showSafetyConfirm = null },
+                title = { Text("Confirm Discard") },
+                text = { Text("This will mark selected messages as discarded. They will no longer appear in the app. This cannot be undone.") },
+                confirmButton = {
+                    Button(onClick = { 
+                        action()
+                        showSafetyConfirm = null
+                        viewModel.deselectAll()
+                    }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                        Text("PROCEED")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSafetyConfirm = null }) { Text("CANCEL") }
+                }
+            )
         }
 
         if (showDatePicker) {
@@ -277,7 +409,7 @@ fun SmsTransactionItem(transaction: Expense, isSelected: Boolean, onToggle: () -
 }
 
 @Composable
-fun SmsReviewItem(transaction: Expense, onClick: () -> Unit, onMarkReviewed: () -> Unit, onDiscard: () -> Unit) {
+fun SmsReviewItem(transaction: Expense, isSelected: Boolean, onToggle: () -> Unit, onClick: () -> Unit, onMarkReviewed: () -> Unit, onDiscard: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -285,6 +417,8 @@ fun SmsReviewItem(transaction: Expense, onClick: () -> Unit, onMarkReviewed: () 
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Checkbox(checked = isSelected, onCheckedChange = { onToggle() })
+        Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(transaction.description, maxLines = 1, fontWeight = FontWeight.Medium)
             Text("${transaction.date} • ${transaction.account}", fontSize = 12.sp, color = Color.Gray)

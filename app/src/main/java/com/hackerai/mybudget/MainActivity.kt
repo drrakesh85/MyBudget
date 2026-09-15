@@ -152,135 +152,162 @@ class MainActivity : ComponentActivity() {
                     expenseViewModel.loadExpenses()
                 }
 
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    when (currentScreen) {
-                        Screen.EXPENSE_LIST -> {
-                            ExpenseListScreen(
-                                viewModel = expenseViewModel,
-                                onNavigateToAccounts = { currentScreen = Screen.ACCOUNT_LIST },
-                                onNavigateToBrowser = { currentScreen = Screen.TRANSACTION_BROWSER },
-                                onNavigateToSummary = { currentScreen = Screen.CATEGORY_SUMMARY },
-                                onNavigateToCalendar = { currentScreen = Screen.CALENDAR_VIEW },
-                                onNavigateToAccountSummary = { currentScreen = Screen.ACCOUNT_SUMMARY },
-                                onNavigateToSettings = { currentScreen = Screen.SETTINGS },
-                                onNavigateToSmsImport = { currentScreen = Screen.SMS_IMPORT }
-                            )
-                        }
-                        Screen.TRANSACTION_BROWSER -> {
-                            TransactionBrowserScreen(
-                                viewModel = expenseViewModel,
-                                onBack = { currentScreen = Screen.EXPENSE_LIST }
-                            )
-                        }
-                        Screen.CATEGORY_SUMMARY -> {
-                            CategorySummaryScreen(
-                                viewModel = expenseViewModel,
-                                onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                onCategoryClick = { name, type ->
-                                    selectedCategoryForTransactions = name
-                                    selectedSummaryTypeForTransactions = type
-                                    currentScreen = Screen.CATEGORY_TRANSACTIONS
-                                }
-                            )
-                        }
-                        Screen.CATEGORY_TRANSACTIONS -> {
-                            CategoryTransactionsScreen(
-                                viewModel = expenseViewModel,
-                                filterValue = selectedCategoryForTransactions,
-                                filterType = selectedSummaryTypeForTransactions,
-                                onBack = { currentScreen = Screen.CATEGORY_SUMMARY }
-                            )
-                        }
-                        Screen.CALENDAR_VIEW -> {
-                            CalendarScreen(
-                                onBack = { currentScreen = Screen.EXPENSE_LIST }
-                            )
-                        }
-                        Screen.ACCOUNT_SUMMARY -> {
-                            AccountSummaryScreen(
-                                viewModel = expenseViewModel,
-                                onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                onManageAccounts = { currentScreen = Screen.ACCOUNT_LIST },
-                                onNavigateToBrowser = { currentScreen = Screen.TRANSACTION_BROWSER }
-                            )
-                        }
-                        Screen.SETTINGS -> {
-                            SettingsScreen(
-                                onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                onNavigateToCategorySettings = { currentScreen = Screen.CATEGORY_SETTINGS },
-                                onNavigateToTagSettings = { currentScreen = Screen.TAG_SETTINGS },
-                                onNavigateToAudit = { currentScreen = Screen.AUDIT },
-                                onNavigateToAccountManagement = { currentScreen = Screen.ACCOUNT_LIST },
-                                onNavigateToBackupRestore = { currentScreen = Screen.BACKUP_RESTORE },
-                                onGoogleDriveSync = {
-                                    val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
-                                    if (lastAccount != null) {
-                                        startGoogleDriveSync(lastAccount)
-                                    } else {
-                                        val client = expenseViewModel.getGoogleSignInClient()
-                                        googleSignInLauncher.launch(client.signInIntent)
+                val editingExpense by expenseViewModel.editingExpense.collectAsState()
+                val accountNames by expenseViewModel.accounts.collectAsState()
+                val payees by expenseViewModel.payees.collectAsState()
+                val categories by expenseViewModel.categories.collectAsState()
+                val subcategories by expenseViewModel.subcategories.collectAsState()
+                val tags by expenseViewModel.tags.collectAsState()
+                val tagMap by expenseViewModel.tagMap.collectAsState()
+                val payeeMap by expenseViewModel.payeeMap.collectAsState()
+                val categorySubcategoryMap by expenseViewModel.categorySubcategoryMap.collectAsState()
+
+                if (editingExpense != null) {
+                    ReviewExpenseScreen(
+                        expense = editingExpense!!,
+                        accounts = accountNames,
+                        payees = payees,
+                        categories = categories,
+                        subcategories = subcategories,
+                        tags = tags,
+                        tagMap = tagMap,
+                        payeeMap = payeeMap,
+                        categorySubcategoryMap = categorySubcategoryMap,
+                        onSave = { expenseViewModel.saveReviewedExpenses(it) },
+                        onCancel = { expenseViewModel.cancelReview() },
+                        onDelete = { expenseViewModel.deleteExpense(it) }
+                    )
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        when (currentScreen) {
+                            Screen.EXPENSE_LIST -> {
+                                ExpenseListScreen(
+                                    viewModel = expenseViewModel,
+                                    onNavigateToAccounts = { currentScreen = Screen.ACCOUNT_LIST },
+                                    onNavigateToBrowser = { currentScreen = Screen.ACCOUNT_SUMMARY },
+                                    onNavigateToSummary = { currentScreen = Screen.CATEGORY_SUMMARY },
+                                    onNavigateToCalendar = { currentScreen = Screen.CALENDAR_VIEW },
+                                    onNavigateToAccountSummary = { currentScreen = Screen.ACCOUNT_SUMMARY },
+                                    onNavigateToSettings = { currentScreen = Screen.SETTINGS },
+                                    onNavigateToSmsImport = { currentScreen = Screen.SMS_IMPORT }
+                                )
+                            }
+                            Screen.TRANSACTION_BROWSER -> {
+                                AccountSummaryScreen(
+                                    viewModel = expenseViewModel,
+                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onManageAccounts = { currentScreen = Screen.ACCOUNT_LIST }
+                                )
+                            }
+                            Screen.CATEGORY_SUMMARY -> {
+                                CategorySummaryScreen(
+                                    viewModel = expenseViewModel,
+                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onCategoryClick = { name, type ->
+                                        selectedCategoryForTransactions = name
+                                        selectedSummaryTypeForTransactions = type
+                                        currentScreen = Screen.CATEGORY_TRANSACTIONS
                                     }
-                                },
-                                onDropboxSync = {
-                                    expenseViewModel.startDropboxSync()
-                                },
-                                onExportCsv = {
-                                    exportData(expenseViewModel, "my_budget_export.csv", "text/csv")
-                                },
-                                onExportExcel = {
-                                    exportData(expenseViewModel, "my_budget_export.xls", "application/vnd.ms-excel")
-                                },
-                                onImportCsv = {
-                                    csvImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv"))
-                                },
-                                onImportExcel = {
-                                    excelImportLauncher.launch(arrayOf("application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                                },
-                                expenseViewModel = expenseViewModel
-                            )
-                        }
-                        Screen.BACKUP_RESTORE -> {
-                            BackupRestoreScreen(
-                                onBack = { currentScreen = Screen.SETTINGS },
-                                viewModel = expenseViewModel
-                            )
-                        }
-                        Screen.CATEGORY_SETTINGS -> {
-                            CategorySettingsScreen(
-                                onBack = { currentScreen = Screen.SETTINGS }
-                            )
-                        }
-                        Screen.TAG_SETTINGS -> {
-                            TagSettingsScreen(
-                                onBack = { currentScreen = Screen.SETTINGS }
-                            )
-                        }
-                        Screen.SMS_IMPORT -> {
-                            SmsImportScreen(
-                                onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                onReviewTransaction = { expense ->
-                                    expenseViewModel.editExpense(expense)
-                                    currentScreen = Screen.EXPENSE_LIST
-                                },
-                                accountFilter = expenseViewModel.selectedAccount.value
-                            )
-                        }
-                        Screen.ACCOUNT_LIST -> {
-                            AccountScreen(
-                                onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                onNavigateToAccountSummary = { accountName ->
-                                    expenseViewModel.filterByAccount(accountName)
-                                    currentScreen = Screen.ACCOUNT_SUMMARY
-                                }
-                            )
-                        }
-                        Screen.AUDIT -> {
-                            AuditScreen(
-                                onBack = { currentScreen = Screen.SETTINGS }
-                            )
+                                )
+                            }
+                            Screen.CATEGORY_TRANSACTIONS -> {
+                                CategoryTransactionsScreen(
+                                    viewModel = expenseViewModel,
+                                    filterValue = selectedCategoryForTransactions,
+                                    filterType = selectedSummaryTypeForTransactions,
+                                    onBack = { currentScreen = Screen.CATEGORY_SUMMARY }
+                                )
+                            }
+                            Screen.CALENDAR_VIEW -> {
+                                CalendarScreen(
+                                    onBack = { currentScreen = Screen.EXPENSE_LIST }
+                                )
+                            }
+                            Screen.ACCOUNT_SUMMARY -> {
+                                AccountSummaryScreen(
+                                    viewModel = expenseViewModel,
+                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onManageAccounts = { currentScreen = Screen.ACCOUNT_LIST }
+                                )
+                            }
+                            Screen.SETTINGS -> {
+                                SettingsScreen(
+                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onNavigateToCategorySettings = { currentScreen = Screen.CATEGORY_SETTINGS },
+                                    onNavigateToTagSettings = { currentScreen = Screen.TAG_SETTINGS },
+                                    onNavigateToAudit = { currentScreen = Screen.AUDIT },
+                                    onNavigateToAccountManagement = { currentScreen = Screen.ACCOUNT_LIST },
+                                    onNavigateToBackupRestore = { currentScreen = Screen.BACKUP_RESTORE },
+                                    onGoogleDriveSync = {
+                                        val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
+                                        if (lastAccount != null) {
+                                            startGoogleDriveSync(lastAccount)
+                                        } else {
+                                            val client = expenseViewModel.getGoogleSignInClient()
+                                            googleSignInLauncher.launch(client.signInIntent)
+                                        }
+                                    },
+                                    onDropboxSync = {
+                                        expenseViewModel.startDropboxSync()
+                                    },
+                                    onExportCsv = {
+                                        exportData(expenseViewModel, "my_budget_export.csv", "text/csv")
+                                    },
+                                    onExportExcel = {
+                                        exportData(expenseViewModel, "my_budget_export.xls", "application/vnd.ms-excel")
+                                    },
+                                    onImportCsv = {
+                                        csvImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv"))
+                                    },
+                                    onImportExcel = {
+                                        excelImportLauncher.launch(arrayOf("application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                                    },
+                                    expenseViewModel = expenseViewModel
+                                )
+                            }
+                            Screen.BACKUP_RESTORE -> {
+                                BackupRestoreScreen(
+                                    onBack = { currentScreen = Screen.SETTINGS },
+                                    viewModel = expenseViewModel
+                                )
+                            }
+                            Screen.CATEGORY_SETTINGS -> {
+                                CategorySettingsScreen(
+                                    onBack = { currentScreen = Screen.SETTINGS }
+                                )
+                            }
+                            Screen.TAG_SETTINGS -> {
+                                TagSettingsScreen(
+                                    onBack = { currentScreen = Screen.SETTINGS }
+                                )
+                            }
+                            Screen.SMS_IMPORT -> {
+                                SmsImportScreen(
+                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onReviewTransaction = { expense ->
+                                        expenseViewModel.editExpense(expense)
+                                        currentScreen = Screen.EXPENSE_LIST
+                                    },
+                                    accountFilter = expenseViewModel.selectedAccount.value
+                                )
+                            }
+                            Screen.ACCOUNT_LIST -> {
+                                AccountScreen(
+                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onNavigateToAccountSummary = { accountName ->
+                                        expenseViewModel.filterByAccount(accountName)
+                                        currentScreen = Screen.ACCOUNT_SUMMARY
+                                    }
+                                )
+                            }
+                            Screen.AUDIT -> {
+                                AuditScreen(
+                                    onBack = { currentScreen = Screen.SETTINGS }
+                                )
+                            }
                         }
                     }
                 }

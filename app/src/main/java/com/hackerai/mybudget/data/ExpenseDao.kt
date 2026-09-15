@@ -26,6 +26,15 @@ interface ExpenseDao {
     @Query("UPDATE expenses SET isDiscarded = 1 WHERE rowId = :rowId")
     suspend fun markAsDiscarded(rowId: String)
 
+    @Query("UPDATE expenses SET isDiscarded = 1 WHERE rowId IN (:rowIds)")
+    suspend fun markAllAsDiscarded(rowIds: List<String>)
+
+    @Query("UPDATE expenses SET isDiscarded = 1 WHERE isPendingReview = 1 AND date < :date")
+    suspend fun discardOlderThan(date: String)
+
+    @Query("UPDATE expenses SET isDiscarded = 1 WHERE isPendingReview = 1 AND date BETWEEN :startDate AND :endDate")
+    suspend fun discardBetweenDates(startDate: String, endDate: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(expense: ExpenseEntity)
 

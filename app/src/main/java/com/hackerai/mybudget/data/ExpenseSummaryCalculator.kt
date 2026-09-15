@@ -15,28 +15,43 @@ object ExpenseSummaryCalculator {
 
     fun filterByAccount(expenses: List<Expense>, account: String?): List<Expense> {
         if (account == null) return expenses
-        return expenses.filter { it.account == account }
+        return expenses.filter { it.account == account || (it.transactionType == "Transfer" && it.toAccount == account) }
     }
 
-    fun calculateSummaries(expenses: List<Expense>): Map<String, Triple<Double, Double, Double>> {
+    fun calculateSummaries(expenses: List<Expense>, account: String? = null): Map<String, Triple<Double, Double, Double>> {
         val now = LocalDate.now(zoneId)
         return mapOf(
-            "Today" to periodSummary(expenses, now.atStartOfDay(zoneId).toInstant().toEpochMilli(), now.atTime(23, 59, 59).atZone(zoneId).toInstant().toEpochMilli()),
-            "This Week" to periodSummary(expenses, weekStart(now), weekEnd(now)),
-            "This Month" to periodSummary(expenses, monthStart(now), monthEnd(now)),
-            "Year to Date" to periodSummary(expenses, yearStart(now), yearEnd(now))
+            "Today" to periodSummary(expenses, now.atStartOfDay(zoneId).toInstant().toEpochMilli(), now.atTime(23, 59, 59).atZone(zoneId).toInstant().toEpochMilli(), account),
+            "This Week" to periodSummary(expenses, weekStart(now), weekEnd(now), account),
+            "This Month" to periodSummary(expenses, monthStart(now), monthEnd(now), account),
+            "Year to Date" to periodSummary(expenses, yearStart(now), yearEnd(now), account)
         )
     }
 
-    fun currentBalance(expenses: List<Expense>): Double = expenses.sumOf { it.amount }
+    fun currentBalance(expenses: List<Expense>, account: String? = null): Double {
+        if (account == null) return expenses.sumOf { it.amount }
+        return expenses.sumOf { exp ->
+            if (exp.transactionType == "Transfer" && exp.toAccount == account) {
+                kotlin.math.abs(exp.amount)
+            } else {
+                exp.amount
+            }
+        }
+    }
 
-    private fun periodSummary(expenses: List<Expense>, start: Long, end: Long): Triple<Double, Double, Double> {
+    private fun periodSummary(expenses: List<Expense>, start: Long, end: Long, account: String?): Triple<Double, Double, Double> {
         val inRange = expenses.filter { expense ->
             val time = parseDate(expense.date) ?: return@filter false
             time in start..end
         }
-        val income = inRange.filter { it.amount > 0 }.sumOf { it.amount }
-        val expense = inRange.filter { it.amount < 0 }.sumOf { it.amount }
+        val income = inRange.sumOf { exp ->
+            if (exp.amount > 0) exp.amount 
+            else if (account != null && exp.transactionType == "Transfer" && exp.toAccount == account) kotlin.math.abs(exp.amount)
+            else 0.0
+        }
+        val expense = inRange.sumOf { exp ->
+            if (exp.amount < 0 && (account == null || exp.account == account)) exp.amount else 0.0
+        }
         return Triple(income, expense, income + expense)
     }
 

@@ -52,6 +52,18 @@ class ExpenseRepository(
         expenseDao.markAsDiscarded(rowId)
     }
 
+    suspend fun discardMultiple(rowIds: List<String>) = withContext(Dispatchers.IO) {
+        expenseDao.markAllAsDiscarded(rowIds)
+    }
+
+    suspend fun discardOlderThan(dateStr: String) = withContext(Dispatchers.IO) {
+        expenseDao.discardOlderThan(dateStr)
+    }
+
+    suspend fun discardBetween(start: String, end: String) = withContext(Dispatchers.IO) {
+        expenseDao.discardBetweenDates(start, end)
+    }
+
     suspend fun renameCategory(oldName: String, newName: String, type: String) = withContext(Dispatchers.IO) {
         expenseDao.renameCategory(oldName, newName, type)
     }

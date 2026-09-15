@@ -106,7 +106,71 @@ class SmsImportViewModel(application: Application) : AndroidViewModel(applicatio
     fun markAsDiscarded(expense: Expense) {
         viewModelScope.launch {
             expenseRepository.markAsDiscarded(expense.rowId)
-            refreshData()
+            scanSms() // Use scanSms to refresh everything correctly
+        }
+    }
+
+    fun discardMultiple(rowIds: List<String>, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            expenseRepository.discardMultiple(rowIds)
+            scanSms()
+            onComplete()
+        }
+    }
+
+    fun discardOlderThan(days: Int, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val date = java.time.LocalDate.now().minusDays(days.toLong())
+            val dateStr = date.format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"))
+            expenseRepository.discardOlderThan(dateStr)
+            scanSms()
+            onComplete()
+        }
+    }
+
+    fun discardBetween(start: Long, end: Long, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val fmt = java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy")
+            val startStr = java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(fmt)
+            val endStr = java.time.Instant.ofEpochMilli(end).atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(fmt)
+            expenseRepository.discardBetween(startStr, endStr)
+            scanSms()
+            onComplete()
+        }
+    }
+
+    fun discardAllMatching(searchQuery: String, start: Long?, end: Long?, tab: Int) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            if (state is SmsImportUiState.Success) {
+                val listToDiscard = if (tab == 0) state.toImport else state.pendingReview
+                val filtered = listToDiscard.filter { transaction ->
+                    val matchesSearch = transaction.description.contains(searchQuery, ignoreCase = true) ||
+                            transaction.amount.toString().contains(searchQuery) ||
+                            transaction.account.contains(searchQuery, ignoreCase = true)
+                    
+                    val matchesDate = if (start != null && end != null) {
+                        val date = try {
+                            java.time.LocalDate.parse(transaction.date, java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"))
+                        } catch (e: Exception) { null }
+                        if (date != null) {
+                            val startDate = java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                            val endDate = java.time.Instant.ofEpochMilli(end).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                            !date.isBefore(startDate) && !date.isAfter(endDate)
+                        } else true
+                    } else true
+                    matchesSearch && matchesDate
+                }
+                
+                // For tab 0 (TO IMPORT), these aren't in DB yet, so we insert them as discarded
+                if (tab == 0) {
+                    filtered.forEach { expenseRepository.saveExpense(it, isPendingReview = false, isDiscarded = true) }
+                } else {
+                    // For tab 1 (TO REVIEW), they are already in DB as pending review, so we just mark them discarded
+                    expenseRepository.discardMultiple(filtered.map { it.rowId })
+                }
+                scanSms()
+            }
         }
     }
 

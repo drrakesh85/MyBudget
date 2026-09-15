@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -205,6 +207,16 @@ fun CategoryTransactionsScreen(
         },
         bottomBar = {
             BottomSummaryBarFiltered(visibleExpenses)
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { viewModel.addNewExpense(selectedAccountName) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                shape = CircleShape
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Transaction")
+            }
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF5F5F5))) {
@@ -223,7 +235,9 @@ fun CategoryTransactionsScreen(
                     
                     IconButton(
                         onClick = { showDatePicker = true },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFF00897B).copy(alpha = 0.1f), CircleShape)
                     ) {
                         Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar", tint = Color(0xFF00897B))
                     }
@@ -295,38 +309,43 @@ fun DayHeaderComponent(date: String, dayExpenses: List<Expense>, dayEndTotal: Do
     val income = dayExpenses.filter { it.amount > 0 }.sumOf { it.amount }
     val expense = dayExpenses.filter { it.amount < 0 }.sumOf { it.amount }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFE0E0E0))
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFFEEEEEE),
+        tonalElevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "$date $dayName",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.DarkGray
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF546E7A),
+                letterSpacing = 0.5.sp
             )
             
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (income != 0.0) {
-                    Text(formatSimple(income), color = Color(0xFF2E7D32), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(formatSimple(income), color = Color(0xFF2E7D32), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 if (expense != 0.0) {
-                    Text(formatSimple(expense), color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(formatSimple(expense), color = Color(0xFFC62828), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
-                Text(
-                    text = formatSimple(dayEndTotal),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    color = Color.Black,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
+                Surface(
+                    color = Color.White.copy(alpha = 0.5f),
+                    shape = MaterialTheme.shapes.extraSmall
+                ) {
+                    Text(
+                        text = formatSimple(dayEndTotal),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 11.sp,
+                        color = Color.Black,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }
@@ -334,51 +353,68 @@ fun DayHeaderComponent(date: String, dayExpenses: List<Expense>, dayEndTotal: Do
 
 @Composable
 fun TransactionListItemComponent(expense: Expense, closingBalance: Double, onClick: () -> Unit) {
-    Column(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable { onClick() },
+        color = Color.White
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } },
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "${expense.category}:${expense.subcategory} | ${expense.account}",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-            }
-            
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = formatSimple(expense.amount),
-                    color = if (expense.amount < 0) Color.Red else Color(0xFF2E7D32),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        Column {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = expense.status.ifEmpty { "clear" },
-                        fontSize = 11.sp,
-                        color = Color.Gray
+                        text = expense.payeePayer.ifEmpty { expense.description.ifEmpty { "Transaction" } },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF263238)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = formatSimple(closingBalance),
-                        fontSize = 11.sp,
+                        text = "${expense.category} : ${expense.subcategory} | ${expense.account}",
+                        fontSize = 12.sp,
                         color = Color.Gray,
                         fontWeight = FontWeight.Medium
                     )
                 }
+                
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = formatSimple(expense.amount),
+                        color = if (expense.amount < 0) Color(0xFFC62828) else Color(0xFF2E7D32),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = Color(0xFFF5F5F5),
+                            shape = CircleShape,
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Text(
+                                text = expense.status.ifEmpty { "clear" }.uppercase(),
+                                fontSize = 9.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Text(
+                            text = formatSimple(closingBalance),
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                thickness = 0.5.dp,
+                color = Color.LightGray.copy(alpha = 0.2f)
+            )
         }
-        HorizontalDivider(modifier = Modifier.padding(top = 8.dp), thickness = 0.5.dp, color = Color(0xFFEEEEEE))
     }
 }
 

@@ -123,48 +123,56 @@ fun CategorySummaryScreen(
             BottomSummaryBarFiltered(filteredExpenses)
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize().background(Color.White)) {
-            Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF8F9FA))) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Text("Account", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = selectedAccount ?: "ALL ACCOUNTS",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center
+                        )
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(16.dp))
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    val filters = listOf("All", "Weekly", "Monthly", "Yearly")
+                    filters.forEach { filter ->
+                        TimeFilterChip(filter, timeFilter == filter) { 
+                            timeFilter = filter 
+                            periodOffset = 0
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Account", color = Color.Gray, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = selectedAccount ?: "ALL ACCOUNTS",
-                        color = Color.Red,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Center
-                    )
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.LightGray)
+                    Box(modifier = Modifier.size(8.dp).background(Color(0xFF00897B), CircleShape))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("BREAKDOWN", color = Color(0xFF00897B), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
                 }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    TimeFilterChip("All", timeFilter == "All") { 
-                        timeFilter = "All" 
-                        periodOffset = 0
-                    }
-                    TimeFilterChip("Weekly", timeFilter == "Weekly") { 
-                        timeFilter = "Weekly" 
-                        periodOffset = 0
-                    }
-                    TimeFilterChip("Monthly", timeFilter == "Monthly") { 
-                        timeFilter = "Monthly" 
-                        periodOffset = 0
-                    }
-                    TimeFilterChip("Yearly", timeFilter == "Yearly") { 
-                        timeFilter = "Yearly" 
-                        periodOffset = 0
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Date Range", color = Color(0xFF00897B), fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
 
-            HorizontalDivider(thickness = 0.5.dp)
+            HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray.copy(alpha = 0.5f))
 
             if (uiState is BudgetUiState.Loading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -212,24 +220,69 @@ private fun filterExpenses(
 @Composable
 fun CategorySummaryItem(data: CategorySummaryData, onClick: () -> Unit) {
     val isIncome = data.isIncome
-    Column(modifier = Modifier.clickable { onClick() }) {
-        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(modifier = Modifier.size(40.dp), shape = CircleShape, color = data.color.copy(alpha = 0.8f)) {
-                Box(contentAlignment = Alignment.Center) {
-                    val initial = if (data.name.isNotBlank()) data.name.take(1).uppercase() else "?"
-                    Text(text = initial, color = Color.White, fontWeight = FontWeight.Bold)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        color = Color.White
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(42.dp),
+                    shape = CircleShape,
+                    color = data.color.copy(alpha = 0.2f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        val initial = if (data.name.isNotBlank()) data.name.take(1).uppercase() else "?"
+                        Text(
+                            text = initial,
+                            color = data.color,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = data.name.ifBlank { "Uncategorized" },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF37474F)
+                    )
+                    LinearProgressIndicator(
+                        progress = { (data.percentage / 100f).toFloat() },
+                        modifier = Modifier.padding(top = 4.dp).fillMaxWidth(0.6f).height(4.dp),
+                        color = if (isIncome) Color(0xFF4CAF50) else Color(0xFFEF5350),
+                        trackColor = Color.LightGray.copy(alpha = 0.2f),
+                        strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = formatSummaryAmount(data.amount),
+                        color = if (isIncome) Color(0xFF2E7D32) else Color(0xFFC62828),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        text = "${String.format("%.1f", data.percentage)}%",
+                        color = Color.Gray,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(text = data.name.ifBlank { "Uncategorized" }, modifier = Modifier.weight(1f), fontSize = 16.sp, color = Color.DarkGray)
-            Text(
-                text = "${formatSummaryAmount(data.amount)} | ${String.format("%.2f", data.percentage)}%",
-                color = if (isIncome) Color(0xFF2E7D32) else Color.Red,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 74.dp),
+                thickness = 0.5.dp,
+                color = Color.LightGray.copy(alpha = 0.3f)
             )
         }
-        HorizontalDivider(modifier = Modifier.padding(start = 72.dp), thickness = 0.5.dp)
     }
 }
 
