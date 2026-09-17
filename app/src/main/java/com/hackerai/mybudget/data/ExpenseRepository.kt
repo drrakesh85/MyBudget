@@ -1,6 +1,7 @@
 package com.hackerai.mybudget.data
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
@@ -21,6 +22,9 @@ class ExpenseRepository(
     suspend fun loadPendingReviewExpenses(): List<Expense> = withContext(Dispatchers.IO) {
         expenseDao.getPendingReviewExpenses().map { it.toExpense() }
     }
+
+    fun getPendingReviewExpensesFlow(): kotlinx.coroutines.flow.Flow<List<Expense>> =
+        expenseDao.getPendingReviewExpensesFlow().map { list -> list.map { it.toExpense() } }
 
     suspend fun getTransactionCountForAccount(accountName: String): Int = withContext(Dispatchers.IO) {
         expenseDao.countByAccount(accountName)
@@ -138,12 +142,55 @@ class ExpenseRepository(
         }
     }
 
+    suspend fun importFromUri(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+        val beforeCount = expenseDao.count()
+        Log.d("CSV_IMPORT", "Starting import from URI: $uri. Database count before: $beforeCount")
+        
+        try {
+            context.contentResolver.openInputStream(uri).use { stream ->
+                if (stream == null) {
+                    return@withContext ImportResult(false, 0, 0, 0, "Failed to open input stream")
+                }
+                
+                val csvExpenses = CsvParser.parse(stream)
+                val parsedCount = csvExpenses.size
+                Log.d("CSV_IMPORT", "Parsed $parsedCount records from CSV")
+                
+                if (csvExpenses.isEmpty()) {
+                    return@withContext ImportResult(true, 0, 0, 0)
+                }
+                
+                val now = System.currentTimeMillis()
+                val entities = csvExpenses.map { it.copy(lastModified = now).toEntity(isPendingReview = false) }
+                
+                expenseDao.insertAll(entities)
+                
+                val afterCount = expenseDao.count()
+                val insertedCount = afterCount - beforeCount
+                // Note: since it's REPLACE, insertedCount might be 0 if all were overwrites, 
+                // but usually we want to know how many were attempted.
+                
+                Log.d("CSV_IMPORT", "Import complete. Attempted: $parsedCount, Database count after: $afterCount")
+                
+                ImportResult(
+                    success = true,
+                    parsedCount = parsedCount,
+                    insertedCount = parsedCount, // Attempted inserts
+                    skippedCount = 0
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("CSV_IMPORT", "Import failed for URI: $uri", e)
+            ImportResult(false, 0, 0, 0, e.message ?: "Unknown error during import")
+        }
+    }
+
     suspend fun getAllForSync(): List<Expense> = withContext(Dispatchers.IO) {
         expenseDao.getAllForSync().map { it.toExpense() }
     }
 
     suspend fun insertSyncData(expenses: List<Expense>) = withContext(Dispatchers.IO) {
-        expenseDao.insertAll(expenses.map { it.toEntity() })
+        expenseDao.fullRestore(expenses.map { it.toEntity() })
     }
 
     suspend fun generateCsvData(): String = withContext(Dispatchers.IO) {
@@ -182,4 +229,16 @@ class ExpenseRepository(
         }
         sb.toString()
     }
+
+    suspend fun clearAllTransactionsPreservingMetadata() = withContext(Dispatchers.IO) {
+        expenseDao.deleteRealTransactions()
+    }
 }
+
+data class ImportResult(
+    val success: Boolean,
+    val parsedCount: Int,
+    val insertedCount: Int,
+    val skippedCount: Int,
+    val errorMessage: String? = null
+)

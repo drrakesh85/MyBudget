@@ -30,6 +30,24 @@ data class Expense(
     val lastModified: Long = System.currentTimeMillis(),
     val isDeleted: Boolean = false
 ) {
+    /**
+     * Generates a deterministic identity for a transaction based on its core properties.
+     * Forced to Locale.US to ensure decimal consistency across different device locales.
+     */
+    fun calculateFingerprint(): String {
+        return listOf(
+            date,
+            time,
+            String.format(java.util.Locale.US, "%.2f", amount),
+            account,
+            payeePayer,
+            description,
+            transactionType,
+            toAccount ?: "",
+            typeId
+        ).joinToString("|")
+    }
+
     companion object {
         private val dateFormatter = DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.getDefault())
         private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
@@ -53,7 +71,7 @@ data class Expense(
             quantity = 1.0,
             unit = "PCS",
             splitTotal = "",
-            rowId = "new_${System.currentTimeMillis()}",
+            rowId = "new_${java.util.UUID.randomUUID()}",
             typeId = "",
             transactionType = "Expense",
             lastModified = System.currentTimeMillis(),

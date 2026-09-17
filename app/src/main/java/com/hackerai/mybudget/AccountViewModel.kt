@@ -107,23 +107,23 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun addSavingAccount(nickName: String, bankName: String, branchName: String, accountNumber: String) {
-        val account = SavingAccount(UUID.randomUUID().toString(), nickName, bankName, branchName, accountNumber)
+    fun addSavingAccount(nickName: String, bankName: String, branchName: String, accountNumber: String, smsSenderKeywords: String = "") {
+        val account = SavingAccount(UUID.randomUUID().toString(), nickName, bankName, branchName, accountNumber, smsSenderKeywords = smsSenderKeywords)
         repository.addAccount(account)
     }
 
-    fun addLoanAccount(nickName: String, bankName: String, branchName: String, accountNumber: String) {
-        val account = LoanAccount(UUID.randomUUID().toString(), nickName, bankName, branchName, accountNumber)
+    fun addLoanAccount(nickName: String, bankName: String, branchName: String, accountNumber: String, smsSenderKeywords: String = "") {
+        val account = LoanAccount(UUID.randomUUID().toString(), nickName, bankName, branchName, accountNumber, smsSenderKeywords = smsSenderKeywords)
         repository.addAccount(account)
     }
 
-    fun addCreditCardAccount(nickName: String, bankName: String, cardNumber: String, expiry: String, cvv: String, billingDate: Int, dueDate: Int) {
-        val account = CreditCardAccount(UUID.randomUUID().toString(), nickName, bankName, cardNumber, expiry, cvv, billingDate, dueDate)
+    fun addCreditCardAccount(nickName: String, bankName: String, cardNumber: String, expiry: String, cvv: String, billingDate: Int, dueDate: Int, smsSenderKeywords: String = "") {
+        val account = CreditCardAccount(UUID.randomUUID().toString(), nickName, bankName, cardNumber, expiry, cvv, billingDate, dueDate, smsSenderKeywords = smsSenderKeywords)
         repository.addAccount(account)
     }
 
-    fun addCashAccount(nickName: String) {
-        val account = CashAccount(UUID.randomUUID().toString(), nickName)
+    fun addCashAccount(nickName: String, smsSenderKeywords: String = "") {
+        val account = CashAccount(UUID.randomUUID().toString(), nickName, smsSenderKeywords = smsSenderKeywords)
         repository.addAccount(account)
     }
 

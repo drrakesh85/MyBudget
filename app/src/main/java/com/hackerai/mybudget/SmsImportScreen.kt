@@ -32,6 +32,7 @@ fun SmsImportScreen(
     val selectedTransactions by viewModel.selectedTransactions.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val dateRange by viewModel.dateRange.collectAsState()
+    val sortOrder by viewModel.sortOrder.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabs = listOf("TO IMPORT", "TO REVIEW")
@@ -39,6 +40,7 @@ fun SmsImportScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showCleanupDialog by remember { mutableStateOf(false) }
     var showSafetyConfirm by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var showSortMenu by remember { mutableStateOf(false) }
     
     val datePickerState = rememberDateRangePickerState()
     val cleanupRangePickerState = rememberDateRangePickerState()
@@ -93,6 +95,40 @@ fun SmsImportScreen(
                                 Icon(Icons.Default.Delete, contentDescription = "Discard Selected", tint = Color.White)
                             }
                         }
+                        
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.Default.Sort, contentDescription = "Sort", tint = Color.White)
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Newest first") },
+                                    onClick = { 
+                                        viewModel.setSortOrder(SmsSortOrder.NEWEST_FIRST)
+                                        showSortMenu = false 
+                                    },
+                                    leadingIcon = { 
+                                        if (sortOrder == SmsSortOrder.NEWEST_FIRST) 
+                                            Icon(Icons.Default.Check, contentDescription = null) 
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Oldest first") },
+                                    onClick = { 
+                                        viewModel.setSortOrder(SmsSortOrder.OLDEST_FIRST)
+                                        showSortMenu = false 
+                                    },
+                                    leadingIcon = { 
+                                        if (sortOrder == SmsSortOrder.OLDEST_FIRST) 
+                                            Icon(Icons.Default.Check, contentDescription = null) 
+                                    }
+                                )
+                            }
+                        }
+
                         IconButton(onClick = { showCleanupDialog = true }) {
                             Icon(Icons.Default.CleaningServices, contentDescription = "Clean Up", tint = Color.White)
                         }

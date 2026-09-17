@@ -129,7 +129,14 @@ fun AccountSummaryScreen(
             } else true
             
             val categoryMatches = selectedCategory == null || exp.category == selectedCategory
-            val typeMatches = selectedType == null || exp.transactionType == selectedType
+            
+            val isTransfer = exp.transactionType == "Transfer"
+            val typeMatches = when (selectedType) {
+                null -> true
+                "Income" -> exp.transactionType == "Income" || (isTransfer && exp.toAccount == selectedAccountName)
+                "Expense" -> exp.transactionType == "Expense" || (isTransfer && exp.account == selectedAccountName)
+                else -> exp.transactionType == selectedType
+            }
 
             dateMatches && searchMatches && categoryMatches && typeMatches
         }.sortedWith(compareByDescending<Expense> { parseDateLocal(it.date) }.thenByDescending { it.time }.thenByDescending { it.rowId })

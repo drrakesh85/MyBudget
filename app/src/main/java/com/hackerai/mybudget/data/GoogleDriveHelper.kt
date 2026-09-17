@@ -16,7 +16,7 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.drive.model.File
 import com.google.api.services.drive.model.FileList
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import com.hackerai.mybudget.R
@@ -33,7 +33,9 @@ class GoogleDriveAuthException(
 
 class GoogleDriveHelper(private val context: Context) {
 
-    private val gson = Gson()
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(Account::class.java, AccountAdapter())
+        .create()
     private val appDataFolderName = "appDataFolder"
     private val syncFileName = "sync_data.json"
 
@@ -86,14 +88,14 @@ class GoogleDriveHelper(private val context: Context) {
         ).setApplicationName("My Budget").build()
     }
 
-    suspend fun uploadSyncData(account: GoogleSignInAccount, expenses: List<Expense>) = withContext(Dispatchers.IO) {
+    suspend fun uploadSyncData(account: GoogleSignInAccount, syncData: SyncData) = withContext(Dispatchers.IO) {
         if (!hasDrivePermission(account)) {
             throw GoogleDriveAuthException("Google Drive permission was not granted.")
         }
         try {
             val service = getDriveService(account)
-            val content = gson.toJson(expenses)
-            Log.d(TAG, "Uploading ${expenses.size} expenses to Drive appDataFolder/$syncFileName")
+            val content = gson.toJson(syncData)
+            Log.d(TAG, "Uploading ${syncData.expenses.size} expenses to Drive appDataFolder/$syncFileName")
 
             val metadata = File()
                 .setName(syncFileName)
@@ -124,7 +126,83 @@ class GoogleDriveHelper(private val context: Context) {
         }
     }
 
-    suspend fun downloadSyncData(account: GoogleSignInAccount): List<Expense> = withContext(Dispatchers.IO) {
+    suspend fun forceReplaceSyncData(account: GoogleSignInAccount, localSyncData: SyncData) = withContext(Dispatchers.IO) {
+        val TAG_FORCE = "FORCE_CLOUD_RESTORE"
+        if (!hasDrivePermission(account)) {
+            throw GoogleDriveAuthException("Google Drive permission was not granted.")
+        }
+        
+        Log.i(TAG_FORCE, "Starting FORCE REPLACE Google Drive from Local Data")
+        Log.i(TAG_FORCE, "Local transaction count: ${localSyncData.expenses.size}")
+        Log.i(TAG_FORCE, "Local account count: ${localSyncData.accounts.size}")
+
+        try {
+            val service = getDriveService(account)
+            
+            // 1. Download existing as backup
+            val existingFile = findSyncFile(service)
+            if (existingFile != null) {
+                try {
+                    val outputStream = ByteArrayOutputStream()
+                    service.files().get(existingFile.id).executeMediaAndDownloadTo(outputStream)
+                    val oldJson = outputStream.toString(Charsets.UTF_8.name())
+                    Log.i(TAG_FORCE, "Old cloud data backup (JSON): $oldJson")
+                    
+                    if (oldJson.trim().startsWith("[")) {
+                        val type = object : TypeToken<List<Expense>>() {}.type
+                        val oldExpenses: List<Expense> = gson.fromJson(oldJson, type)
+                        Log.i(TAG_FORCE, "Old cloud transaction count: ${oldExpenses.size} (Legacy format)")
+                    } else {
+                        val oldSyncData = gson.fromJson(oldJson, SyncData::class.java)
+                        Log.i(TAG_FORCE, "Old cloud transaction count: ${oldSyncData?.expenses?.size ?: 0}")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG_FORCE, "Failed to backup old cloud data, proceeding anyway: ${e.message}")
+                }
+            } else {
+                Log.i(TAG_FORCE, "No existing cloud file to backup.")
+            }
+
+            // 2. Prepare Upload
+            val localJson = gson.toJson(localSyncData)
+            Log.i(TAG_FORCE, "Generated SyncData count: ${localSyncData.expenses.size}")
+            
+            val metadata = File()
+                .setName(syncFileName)
+                .setParents(Collections.singletonList(appDataFolderName))
+            val contentStream = ByteArrayContent.fromString("application/json", localJson)
+
+            // 3. Upload (Replace)
+            if (existingFile != null) {
+                Log.i(TAG_FORCE, "Replacing existing Drive file id=${existingFile.id}")
+                service.files().update(existingFile.id, null, contentStream).execute()
+            } else {
+                Log.i(TAG_FORCE, "Creating new Drive file")
+                service.files().create(metadata, contentStream).execute()
+            }
+            Log.i(TAG_FORCE, "Upload result: SUCCESS")
+
+            // 4. Verify
+            Log.i(TAG_FORCE, "Verifying uploaded data...")
+            val verifiedSyncData = downloadSyncData(account)
+            
+            if (verifiedSyncData.expenses.size == localSyncData.expenses.size) {
+                Log.i(TAG_FORCE, "Verification result: SUCCESS (Count matches: ${verifiedSyncData.expenses.size})")
+                Log.i(TAG_FORCE, "Final status: COMPLETED SUCCESSFULLY")
+            } else {
+                val msg = "Verification FAILED: Uploaded count (${verifiedSyncData.expenses.size}) does not match local count (${localSyncData.expenses.size})"
+                Log.e(TAG_FORCE, msg)
+                throw Exception(msg)
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG_FORCE, "Force replace failed: ${e.message}", e)
+            Log.i(TAG_FORCE, "Final status: FAILED")
+            throw e
+        }
+    }
+
+    suspend fun downloadSyncData(account: GoogleSignInAccount): SyncData = withContext(Dispatchers.IO) {
         if (!hasDrivePermission(account)) {
             throw GoogleDriveAuthException("Google Drive permission was not granted.")
         }
@@ -133,7 +211,7 @@ class GoogleDriveHelper(private val context: Context) {
             val file = findSyncFile(service)
             if (file == null) {
                 Log.i(TAG, "No existing sync file found in appDataFolder; starting with empty remote data")
-                return@withContext emptyList()
+                return@withContext SyncData()
             }
 
             Log.d(TAG, "Downloading Drive file id=${file.id}")
@@ -144,9 +222,16 @@ class GoogleDriveHelper(private val context: Context) {
                 throw Exception("Google Drive sync file is empty.")
             }
 
-            val type = object : TypeToken<List<Expense>>() {}.type
-            gson.fromJson<List<Expense>>(json, type)
-                ?: throw Exception("Google Drive sync file did not contain expense data.")
+            // Detect if file is old format (List) or new format (SyncData)
+            return@withContext if (json.trim().startsWith("[")) {
+                Log.i(TAG, "Legacy Google Drive format detected (List)")
+                val type = object : TypeToken<List<Expense>>() {}.type
+                val expenses: List<Expense> = gson.fromJson(json, type) ?: emptyList()
+                SyncData(expenses = expenses)
+            } else {
+                gson.fromJson(json, SyncData::class.java)
+                    ?: throw Exception("Google Drive sync file did not contain valid data.")
+            }
         } catch (e: JsonSyntaxException) {
             Log.e(TAG, "Failed to parse Google Drive sync JSON", e)
             throw Exception("Google Drive sync file JSON parsing failed: ${e.message}", e)

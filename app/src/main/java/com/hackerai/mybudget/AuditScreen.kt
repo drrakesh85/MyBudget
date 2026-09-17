@@ -25,12 +25,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun AuditScreen(
     onBack: () -> Unit,
     viewModel: AuditViewModel = viewModel(),
+    expenseViewModel: ExpenseViewModel = viewModel(),
     accountViewModel: AccountViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val accounts by accountViewModel.accounts.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     var showFixDialog by remember { mutableStateOf<AuditIssue?>(null) }
+    var showWipeConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -50,40 +53,75 @@ fun AuditScreen(
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (val state = uiState) {
-                is AuditUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                is AuditUiState.Success -> {
-                    if (state.issues.isEmpty()) {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(64.dp))
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Database Integrity is Perfect!", fontWeight = FontWeight.Bold)
-                            Text("No orphaned or missing accounts found.", color = Color.Gray)
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            item {
-                                Text(
-                                    "Found ${state.issues.size} integrity issues that need attention.",
-                                    modifier = Modifier.padding(16.dp),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.Red
-                                )
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            Box(modifier = Modifier.weight(1f)) {
+                when (val state = uiState) {
+                    is AuditUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    is AuditUiState.Success -> {
+                        if (state.issues.isEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(64.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("Database Integrity is Perfect!", fontWeight = FontWeight.Bold)
+                                Text("No orphaned or missing accounts found.", color = Color.Gray)
                             }
-                            items(state.issues) { issue ->
-                                AuditIssueItem(issue) {
-                                    showFixDialog = issue
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                item {
+                                    Text(
+                                        "Found ${state.issues.size} integrity issues that need attention.",
+                                        modifier = Modifier.padding(16.dp),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.Red
+                                    )
+                                }
+                                items(state.issues) { issue ->
+                                    AuditIssueItem(issue) {
+                                        showFixDialog = issue
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+            
+            // Wipe Button
+            Button(
+                onClick = { showWipeConfirm = true },
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("WIPE ALL TRANSACTIONS (RECOVER FROM CSV)", color = Color.White)
+            }
+        }
+
+        if (showWipeConfirm) {
+            AlertDialog(
+                onDismissRequest = { showWipeConfirm = false },
+                title = { Text("Wipe All Data?") },
+                text = { Text("This will delete all your local transactions permanently. Categories and account profiles will be kept. You will need to restore from CSV afterwards.") },
+                confirmButton = {
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        onClick = {
+                            expenseViewModel.clearAllTransactions {
+                                android.widget.Toast.makeText(context, "Local database wiped.", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            showWipeConfirm = false
+                            viewModel.runAudit()
+                        }
+                    ) { Text("WIPE") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showWipeConfirm = false }) { Text("CANCEL") }
+                }
+            )
         }
 
         if (showFixDialog != null) {
@@ -112,7 +150,7 @@ fun AuditScreen(
                 },
                 confirmButton = {
                     Button(
-                        enabled = selectedAccount.isNotEmpty(),
+                        enabled = selectedAccount.isNotEmpty() || issue.type == IssueType.CORRUPTED_AMOUNTS,
                         onClick = {
                             when (issue.type) {
                                 IssueType.ORPHANED_TRANSACTIONS -> {
@@ -122,12 +160,15 @@ fun AuditScreen(
                                 IssueType.EMPTY_ACCOUNT_NAME -> {
                                     viewModel.fixBlank(selectedAccount)
                                 }
+                                IssueType.CORRUPTED_AMOUNTS -> {
+                                    viewModel.deleteCorrupted()
+                                }
                                 else -> {}
                             }
                             showFixDialog = null
                         }
                     ) {
-                        Text("FIX ALL")
+                        Text(if (issue.type == IssueType.CORRUPTED_AMOUNTS) "DELETE ALL CORRUPTED" else "FIX ALL")
                     }
                 },
                 dismissButton = {

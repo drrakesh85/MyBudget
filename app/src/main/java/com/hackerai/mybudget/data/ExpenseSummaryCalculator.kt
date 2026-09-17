@@ -31,10 +31,12 @@ object ExpenseSummaryCalculator {
     fun currentBalance(expenses: List<Expense>, account: String? = null): Double {
         if (account == null) return expenses.sumOf { it.amount }
         return expenses.sumOf { exp ->
-            if (exp.transactionType == "Transfer" && exp.toAccount == account) {
-                kotlin.math.abs(exp.amount)
-            } else {
-                exp.amount
+            when {
+                // Incoming transfer
+                exp.transactionType == "Transfer" && exp.toAccount == account -> kotlin.math.abs(exp.amount)
+                // Outgoing transaction from this account (Transfer or Expense)
+                exp.account == account -> exp.amount
+                else -> 0.0
             }
         }
     }

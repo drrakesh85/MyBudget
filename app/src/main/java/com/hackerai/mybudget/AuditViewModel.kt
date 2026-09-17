@@ -23,7 +23,8 @@ data class AuditIssue(
 enum class IssueType {
     ORPHANED_TRANSACTIONS,
     EMPTY_ACCOUNT_NAME,
-    MISMATCHED_TYPES
+    MISMATCHED_TYPES,
+    CORRUPTED_AMOUNTS
 }
 
 class AuditViewModel(application: Application) : AndroidViewModel(application) {
@@ -70,8 +71,31 @@ class AuditViewModel(application: Application) : AndroidViewModel(application) {
                     affectedCount = blankAccounts.size
                 ))
             }
+
+            // 3. Find Corrupted Amounts (> 1 Billion)
+            val corrupted = expenses.filter { kotlin.math.abs(it.amount) > 1_000_000_000.0 }
+            if (corrupted.isNotEmpty()) {
+                issues.add(AuditIssue(
+                    title = "Corrupted Trillion-Rupee Data",
+                    description = "Detected transactions with impossible amounts (likely caused by a buggy SMS scan). These will break your balances.",
+                    type = IssueType.CORRUPTED_AMOUNTS,
+                    affectedCount = corrupted.size,
+                    data = corrupted.map { it.rowId }
+                ))
+            }
             
             _uiState.value = AuditUiState.Success(issues)
+        }
+    }
+
+    fun deleteCorrupted() {
+        viewModelScope.launch {
+            val expenses = expenseRepository.loadExpenses()
+            val corruptedIds = expenses.filter { kotlin.math.abs(it.amount) > 1_000_000_000.0 }.map { it.rowId }
+            corruptedIds.forEach { id ->
+                expenseRepository.deleteById(id)
+            }
+            runAudit()
         }
     }
 

@@ -36,17 +36,19 @@ fun BackupRestoreScreen(
     var payerCheck by remember { mutableStateOf(true) }
     var payeeCheck by remember { mutableStateOf(true) }
 
+    var showForceReplaceDialog by remember { mutableStateOf(false) }
+
     val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/csv")
+        contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         uri?.let {
-            viewModel.exportAppData(categoriesCheck, tagsCheck, payerCheck, payeeCheck) { csv ->
+            viewModel.exportFullBackup { json ->
                 try {
                     context.contentResolver.openOutputStream(it)?.use { stream ->
-                        stream.write(csv.toByteArray())
+                        stream.write(json.toByteArray())
                         stream.flush()
                     }
-                    Toast.makeText(context, "Backup saved successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Full backup saved successfully", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "Failed to save backup: ${e.message}", Toast.LENGTH_LONG).show()
                 }
@@ -65,8 +67,17 @@ fun BackupRestoreScreen(
                         Toast.makeText(context, "The selected file is empty", Toast.LENGTH_LONG).show()
                         return@use
                     }
-                    viewModel.importAppData(content, categoriesCheck, tagsCheck, payerCheck, payeeCheck) {
-                        Toast.makeText(context, "Restore complete!", Toast.LENGTH_SHORT).show()
+                    
+                    if (content.trim().startsWith("{")) {
+                        // JSON Full Backup
+                        viewModel.importFullBackup(content) {
+                            Toast.makeText(context, "Full Restore complete!", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        // CSV Metadata Restore
+                        viewModel.importAppData(content, categoriesCheck, tagsCheck, payerCheck, payeeCheck) {
+                            Toast.makeText(context, "Restore complete!", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -79,7 +90,7 @@ fun BackupRestoreScreen(
         topBar = {
             Column(modifier = Modifier.background(MaterialTheme.colorScheme.primary)) {
                 TopAppBar(
-                    title = { Text("Backup & Restore App Data", color = Color.White) },
+                    title = { Text("Backup & Restore", color = Color.White) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
@@ -112,43 +123,125 @@ fun BackupRestoreScreen(
                 .padding(16.dp)
         ) {
             Text(
-                text = if (selectedTabIndex == 0) "Select data to backup:" else "Select data to restore:",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 16.dp)
+                text = if (selectedTabIndex == 0) "Complete Data Backup" else "Data Restore",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
 
-            CheckboxItem(label = "Categories", checked = categoriesCheck, onCheckedChange = { categoriesCheck = it })
-            CheckboxItem(label = "Tags", checked = tagsCheck, onCheckedChange = { tagsCheck = it })
-            CheckboxItem(label = "Payer", checked = payerCheck, onCheckedChange = { payerCheck = it })
-            CheckboxItem(label = "Payee", checked = payeeCheck, onCheckedChange = { payeeCheck = it })
-
-            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = if (selectedTabIndex == 0) 
+                    "Saves all transactions, accounts, and settings to a JSON file." 
+                    else "Restore your data from a previously saved JSON or legacy CSV file.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
 
             if (selectedTabIndex == 0) {
                 Button(
-                    onClick = { createDocumentLauncher.launch("app_metadata_backup.csv") },
-                    modifier = Modifier.fillMaxWidth()
+                    onClick = { createDocumentLauncher.launch("my_budget_full_backup.json") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium
                 ) {
-                    Text("BACKUP TO CSV")
+                    Text("BACKUP ALL DATA (JSON)")
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                OutlinedButton(
+                    onClick = { 
+                        // Keep legacy CSV backup for categories only if needed
+                        viewModel.exportAppData(categoriesCheck, tagsCheck, payerCheck, payeeCheck) { csv ->
+                             // Using a different mechanism for this would be better but keeping it simple
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = false // Disabled in favor of full JSON backup
+                ) {
+                    Text("Backup Metadata only (CSV)")
                 }
             } else {
                 Button(
                     onClick = { 
-                        // Support various CSV and text MIME types for better compatibility
-                        openDocumentLauncher.launch(arrayOf(
-                            "text/csv", 
-                            "text/plain", 
-                            "text/comma-separated-values", 
-                            "application/csv", 
-                            "application/vnd.ms-excel",
-                            "*/*" // Fallback to allow any file if the above fail
-                        )) 
+                        openDocumentLauncher.launch(arrayOf("application/json", "text/csv", "text/plain", "*/*")) 
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium
                 ) {
-                    Text("BROWSE & RESTORE")
+                    Text("BROWSE & RESTORE FILE")
                 }
             }
+            
+            if (selectedTabIndex == 1) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Metadata Restore Options (CSV only):", style = MaterialTheme.typography.labelLarge)
+                CheckboxItem(label = "Categories", checked = categoriesCheck, onCheckedChange = { categoriesCheck = it })
+                CheckboxItem(label = "Tags", checked = tagsCheck, onCheckedChange = { tagsCheck = it })
+                CheckboxItem(label = "Payer", checked = payerCheck, onCheckedChange = { payerCheck = it })
+                CheckboxItem(label = "Payee", checked = payeeCheck, onCheckedChange = { payeeCheck = it })
+            }
+
+            if (selectedTabIndex == 1) {
+                Spacer(modifier = Modifier.height(32.dp))
+                HorizontalDivider(color = Color.Red.copy(alpha = 0.2f))
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Text(
+                    text = "Dangerous Zone",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.Red,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                OutlinedButton(
+                    onClick = { showForceReplaceDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Red)
+                ) {
+                    Text("FORCE REPLACE GOOGLE DRIVE FROM LOCAL")
+                }
+            }
+        }
+
+        if (showForceReplaceDialog) {
+            AlertDialog(
+                onDismissRequest = { showForceReplaceDialog = false },
+                title = { Text("WARNING") },
+                text = {
+                    Text("This will replace the Google Drive sync_data.json with the current local database.\n\nExisting Google Drive data will NOT be merged.\n\nMake sure the local data has been verified before continuing.")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showForceReplaceDialog = false
+                            val account = viewModel.getLastSignedInGoogleAccount()
+                            if (account != null) {
+                                viewModel.forceReplaceGoogleDrive(account) { result ->
+                                    if (result == "SUCCESS") {
+                                        Toast.makeText(context, "Google Drive data replaced and verified.", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "Operation failed: $result", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            } else {
+                                Toast.makeText(context, "Please sign in to Google Drive first.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    ) {
+                        Text("BACK UP & REPLACE")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showForceReplaceDialog = false }) {
+                        Text("CANCEL")
+                    }
+                }
+            )
         }
     }
 }

@@ -179,7 +179,7 @@ fun CategorySummaryScreen(
                     CircularProgressIndicator()
                 }
             } else {
-                val categoryData = calculateCategorySummaryFiltered(filteredExpenses, summaryType)
+                val categoryData = calculateCategorySummaryFiltered(filteredExpenses, summaryType, selectedAccount)
                 if (categoryData.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("No transactions for this period", color = Color.Gray)
@@ -204,7 +204,7 @@ private fun filterExpenses(
     range: Pair<LocalDate?, LocalDate?>
 ): List<Expense> {
     return expenses.filter { exp ->
-        val accountMatches = account == null || exp.account == account
+        val accountMatches = account == null || exp.account == account || (exp.transactionType == "Transfer" && exp.toAccount == account)
         val dateMatches = if (range.first != null && range.second != null) {
             val expDate = try {
                 LocalDate.parse(exp.date, DateTimeFormatter.ofPattern("dd-MM-yyyy"))
@@ -288,13 +288,20 @@ fun CategorySummaryItem(data: CategorySummaryData, onClick: () -> Unit) {
 
 data class CategorySummaryData(val name: String, val amount: Double, val percentage: Double, val color: Color, val isIncome: Boolean = false)
 
-fun calculateCategorySummaryFiltered(expenses: List<Expense>, summaryType: String): List<CategorySummaryData> {
+fun calculateCategorySummaryFiltered(expenses: List<Expense>, summaryType: String, account: String?): List<CategorySummaryData> {
     val isIncomeMode = summaryType in listOf("Income", "Income without transfer", "Payer - Income", "Tag - Income")
     
-    val baseList = if (isIncomeMode) {
-        expenses.filter { it.amount > 0 }
-    } else {
-        expenses.filter { it.amount < 0 }
+    val baseList = expenses.filter { exp ->
+        val isTransfer = exp.transactionType == "Transfer"
+        val isIncomingTransfer = isTransfer && account != null && exp.toAccount == account
+        
+        if (isIncomeMode) {
+            // Include positive amounts OR incoming transfers
+            exp.amount > 0 || isIncomingTransfer
+        } else {
+            // Include negative amounts BUT EXCLUDE incoming transfers (they are not expenses for this account)
+            exp.amount < 0 && !isIncomingTransfer
+        }
     }
 
     val filteredList = when (summaryType) {

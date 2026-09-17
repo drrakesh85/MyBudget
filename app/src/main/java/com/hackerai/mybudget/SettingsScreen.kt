@@ -41,6 +41,7 @@ fun SettingsScreen(
     val isGoogleDriveConnected by expenseViewModel.isGoogleDriveConnected.collectAsState()
     val googleDriveSyncState by expenseViewModel.googleDriveSyncState.collectAsState()
     val googleDriveLastSuccessfulSyncMillis by expenseViewModel.googleDriveLastSuccessfulSyncMillis.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
         expenseViewModel.refreshGoogleDriveConnection()
@@ -92,14 +93,21 @@ fun SettingsScreen(
                         syncState = dropboxSyncState,
                         onConnect = onDropboxSync,
                         onSyncNow = { expenseViewModel.syncWithDropbox() },
-                        onDisconnect = { expenseViewModel.disconnectDropbox() }
+                        onDisconnect = { expenseViewModel.disconnectDropbox() },
+                        onForceUpload = { expenseViewModel.forceUploadToDropbox() }
                     )
                 } else if (item.first == "Google Drive") {
                     GoogleDriveSettingsItem(
                         isConnected = isGoogleDriveConnected,
                         syncState = googleDriveSyncState,
                         lastSuccessfulSyncMillis = googleDriveLastSuccessfulSyncMillis,
-                        onConnectOrSync = onGoogleDriveSync
+                        onConnectOrSync = onGoogleDriveSync,
+                        onForceUpload = {
+                            val account = com.google.android.gms.auth.api.signin.GoogleSignIn.getLastSignedInAccount(context)
+                            if (account != null) {
+                                expenseViewModel.forceReplaceGoogleDrive(account) { }
+                            }
+                        }
                     )
                 } else {
                     SettingsItem(
@@ -131,7 +139,8 @@ fun DropboxSettingsItem(
     syncState: SyncState,
     onConnect: () -> Unit,
     onSyncNow: () -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    onForceUpload: () -> Unit = {}
 ) {
     Column {
         Row(
@@ -176,6 +185,15 @@ fun DropboxSettingsItem(
                 }
             }
         }
+        if (isConnected) {
+            TextButton(
+                onClick = onForceUpload,
+                modifier = Modifier.padding(start = 36.dp),
+                enabled = syncState !is SyncState.Loading
+            ) {
+                Text("OVERWRITE CLOUD WITH LOCAL DATA", color = Color(0xFFD32F2F), fontSize = 10.sp)
+            }
+        }
         HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE))
     }
 }
@@ -185,7 +203,8 @@ fun GoogleDriveSettingsItem(
     isConnected: Boolean,
     syncState: SyncState,
     lastSuccessfulSyncMillis: Long?,
-    onConnectOrSync: () -> Unit
+    onConnectOrSync: () -> Unit,
+    onForceUpload: () -> Unit = {}
 ) {
     Column {
         Row(
@@ -234,6 +253,15 @@ fun GoogleDriveSettingsItem(
                 ) {
                     Text("SYNC NOW")
                 }
+            }
+        }
+        if (isConnected) {
+            TextButton(
+                onClick = onForceUpload,
+                modifier = Modifier.padding(start = 36.dp),
+                enabled = syncState !is SyncState.Loading
+            ) {
+                Text("OVERWRITE CLOUD WITH LOCAL DATA", color = Color(0xFFD32F2F), fontSize = 10.sp)
             }
         }
         HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFEEEEEE))

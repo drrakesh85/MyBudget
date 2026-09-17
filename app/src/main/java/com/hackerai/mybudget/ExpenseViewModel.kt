@@ -33,9 +33,10 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     private val repository: ExpenseRepository = (application as MyBudgetApplication).expenseRepository
     private val accountRepository = (application as MyBudgetApplication).accountRepository
     private val smsRepository = SmsRepository(application)
-    private val syncManager = SyncManager(repository)
+    private val syncManager = SyncManager(repository, accountRepository)
     private val googleDriveHelper = GoogleDriveHelper(application)
     private val dropboxHelper = DropboxHelper(application)
+    private val gson = com.google.gson.Gson()
 
     private val _uiState = MutableStateFlow<BudgetUiState>(BudgetUiState.Loading)
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
@@ -158,7 +159,25 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 loadExpenses()
                 onComplete()
             } catch (e: Exception) {
+                Log.e("ExpenseViewModel", "Import from stream failed", e)
                 _uiState.value = BudgetUiState.Error(e.message ?: "Failed to import from stream")
+            }
+        }
+    }
+
+    fun importFromUri(uri: android.net.Uri, onResult: (ImportResult) -> Unit) {
+        viewModelScope.launch {
+            _uiState.value = BudgetUiState.Loading
+            val result = repository.importFromUri(uri)
+            if (result.success) {
+                loadExpenses()
+                _uiState.value = BudgetUiState.Success(
+                    (uiState.value as? BudgetUiState.Success)?.expenses ?: emptyList(),
+                    (uiState.value as? BudgetUiState.Success)?.pendingSms ?: emptyList()
+                )
+                onResult(result)
+            } else {
+                _uiState.value = BudgetUiState.Error(result.errorMessage ?: "Failed to import CSV")
             }
         }
     }
@@ -353,7 +372,9 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.value = currentState.copy(expenses = currentExpenses, pendingSms = currentPending)
                 _editingExpense.value = null
                 refreshSummaries(currentExpenses)
+                Log.d("SMS_NAV", "Room save SUCCESS. Pending SMS count: ${currentPending.size}")
             } catch (e: Exception) {
+                Log.e("SMS_NAV", "Room save FAILED", e)
                 _uiState.value = BudgetUiState.Error(e.message ?: "Failed to save expenses")
             }
         }
@@ -367,15 +388,10 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     _googleDriveSyncState.value = SyncState.Error("Google Drive permission was not granted.")
                     return@launch
                 }
-                val remoteExpenses = googleDriveHelper.downloadSyncData(account)
-                val merged = syncManager.mergeExpenses(remoteExpenses)
+                val remoteData = googleDriveHelper.downloadSyncData(account)
+                val merged = syncManager.mergeSyncData(remoteData)
                 googleDriveHelper.uploadSyncData(account, merged)
-                loadExpenses()
-                val syncedAt = System.currentTimeMillis()
-                googleDriveHelper.saveLastSuccessfulSyncMillis(syncedAt)
-                _googleDriveLastSuccessfulSyncMillis.value = syncedAt
-                _isGoogleDriveConnected.value = true
-                _googleDriveSyncState.value = SyncState.Success("Google Drive sync complete")
+                _googleDriveSyncState.value = SyncState.Success("Sync complete")
             } catch (e: GoogleDriveAuthException) {
                 Log.e(TAG, "Google Drive authorization failed", e)
                 if (e.recoverableIntent != null) {
@@ -389,11 +405,63 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun forceReplaceGoogleDrive(account: GoogleSignInAccount, onComplete: (String) -> Unit) {
+        viewModelScope.launch {
+            _googleDriveSyncState.value = SyncState.Loading
+            try {
+                val localExpenses = repository.getAllForSync()
+                val localAccounts = accountRepository.accounts.value
+                val localSyncData = SyncData(
+                    schemaVersion = 3,
+                    lastSyncTimestamp = System.currentTimeMillis(),
+                    expenses = localExpenses,
+                    accounts = localAccounts
+                )
+                
+                googleDriveHelper.forceReplaceSyncData(account, localSyncData)
+                
+                val syncedAt = System.currentTimeMillis()
+                googleDriveHelper.saveLastSuccessfulSyncMillis(syncedAt)
+                _googleDriveLastSuccessfulSyncMillis.value = syncedAt
+                _isGoogleDriveConnected.value = true
+                _googleDriveSyncState.value = SyncState.Success("Google Drive replaced successfully")
+                onComplete("SUCCESS")
+            } catch (e: Exception) {
+                Log.e("FORCE_CLOUD_RESTORE", "Force replace failed in ViewModel: ${e.message}", e)
+                _googleDriveSyncState.value = SyncState.Error("Force replace failed: ${e.message}")
+                onComplete("FAILED: ${e.message}")
+            }
+        }
+    }
+
+    fun forceUploadToDropbox() {
+        viewModelScope.launch {
+            _dropboxSyncState.value = SyncState.Loading
+            try {
+                val localExpenses = repository.getAllForSync()
+                val localAccounts = accountRepository.accounts.value
+                val dataToUpload = SyncData(
+                    lastSyncTimestamp = System.currentTimeMillis(),
+                    expenses = localExpenses,
+                    accounts = localAccounts
+                )
+                
+                dropboxHelper.uploadSyncData(dataToUpload)
+                _dropboxSyncState.value = SyncState.Success("Cloud data overwritten with local data.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Dropbox force upload failed", e)
+                _dropboxSyncState.value = SyncState.Error("Force upload failed: ${e.message}")
+            }
+        }
+    }
+
     fun clearGoogleDriveRecoverableAuthIntent() {
         _googleDriveRecoverableAuthIntent.value = null
     }
 
     fun getGoogleSignInClient() = googleDriveHelper.getGoogleSignInClient()
+
+    fun getLastSignedInGoogleAccount() = googleDriveHelper.getLastSignedInAccount()
 
     fun hasGoogleDrivePermission(account: GoogleSignInAccount) = googleDriveHelper.hasDrivePermission(account)
 
@@ -417,20 +485,9 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
             _dropboxSyncState.value = SyncState.Loading
             try {
                 val remoteSyncData = dropboxHelper.downloadSyncData()
-                val localExpenses = repository.getAllForSync()
-                
-                val mergedExpenses = if (remoteSyncData != null) {
-                    syncManager.mergeExpenses(remoteSyncData.expenses)
-                } else {
-                    localExpenses
-                }
+                val merged = syncManager.mergeSyncData(remoteSyncData ?: SyncData())
 
-                dropboxHelper.uploadSyncData(
-                    DropboxSyncData(
-                        lastSyncTimestamp = System.currentTimeMillis(),
-                        expenses = mergedExpenses
-                    )
-                )
+                dropboxHelper.uploadSyncData(merged)
                 
                 _dropboxSyncState.value = SyncState.Success("Sync complete")
                 loadExpenses()
@@ -450,6 +507,46 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val csv = repository.generateCsvData()
             onResult(csv)
+        }
+    }
+
+    fun exportFullBackup(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val expenses = repository.getAllForSync()
+            val accounts = accountRepository.accounts.value
+            val syncData = SyncData(expenses = expenses, accounts = accounts)
+            onResult(gson.toJson(syncData))
+        }
+    }
+
+    fun importFullBackup(json: String, onComplete: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                // Try parsing as SyncData first
+                val syncData = try {
+                    val data = gson.fromJson(json, SyncData::class.java)
+                    // If expenses is null, it might be a legacy List<Expense> format
+                    if (data?.expenses == null) {
+                        val listType = object : com.google.gson.reflect.TypeToken<List<Expense>>() {}.type
+                        val list: List<Expense> = gson.fromJson(json, listType)
+                        SyncData(expenses = list)
+                    } else {
+                        data
+                    }
+                } catch (e: Exception) {
+                    // Fallback to legacy List<Expense> if it's just a JSON array
+                    val listType = object : com.google.gson.reflect.TypeToken<List<Expense>>() {}.type
+                    val list: List<Expense> = gson.fromJson(json, listType)
+                    SyncData(expenses = list)
+                }
+
+                if (syncData.expenses.isNotEmpty() || syncData.accounts.isNotEmpty()) {
+                    syncManager.mergeSyncData(syncData)
+                    onComplete()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Full backup import failed", e)
+            }
         }
     }
 
@@ -511,6 +608,14 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
             }
+            loadExpenses()
+            onComplete()
+        }
+    }
+
+    fun clearAllTransactions(onComplete: () -> Unit) {
+        viewModelScope.launch {
+            repository.clearAllTransactionsPreservingMetadata()
             loadExpenses()
             onComplete()
         }

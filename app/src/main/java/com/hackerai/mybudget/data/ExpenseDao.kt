@@ -17,6 +17,9 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE isPendingReview = 1 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC")
     suspend fun getPendingReviewExpenses(): List<ExpenseEntity>
 
+    @Query("SELECT * FROM expenses WHERE isPendingReview = 1 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC")
+    fun getPendingReviewExpensesFlow(): kotlinx.coroutines.flow.Flow<List<ExpenseEntity>>
+
     @Query("SELECT COUNT(*) FROM expenses")
     suspend fun count(): Int
 
@@ -41,6 +44,19 @@ interface ExpenseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(expenses: List<ExpenseEntity>)
 
+    @androidx.room.Transaction
+    suspend fun fullRestore(expenses: List<ExpenseEntity>) {
+        // We don't delete existing data unless specified, but for a "Full Restore" 
+        // the user might expect an overwrite or a merge.
+        // The instructions say: "Do NOT run an automatic cleanup of existing transactions during migration."
+        // "Existing data must remain unchanged until the user explicitly performs a validated sync/restore."
+        // During restore, we should probably clear and insert OR merge.
+        // "Full Backup (JSON) must actually be a complete financial-data backup."
+        // Given the requirement "Restore must be atomic... validation fails: database remains unchanged",
+        // we'll insert them all in a transaction.
+        insertAll(expenses)
+    }
+
     @Query("SELECT COUNT(*) FROM expenses WHERE account = :accountName")
     suspend fun countByAccount(accountName: String): Int
 
@@ -64,4 +80,7 @@ interface ExpenseDao {
 
     @Query("SELECT * FROM expenses")
     suspend fun getAllForSync(): List<ExpenseEntity>
+
+    @Query("DELETE FROM expenses WHERE status != 'system'")
+    suspend fun deleteRealTransactions()
 }

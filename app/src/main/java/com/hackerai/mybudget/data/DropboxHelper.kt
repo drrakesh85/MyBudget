@@ -9,7 +9,7 @@ import com.dropbox.core.android.Auth
 import com.dropbox.core.oauth.DbxCredential
 import com.dropbox.core.v2.DbxClientV2
 import com.dropbox.core.v2.files.WriteMode
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import com.hackerai.mybudget.R
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +19,9 @@ import java.io.ByteArrayOutputStream
 
 class DropboxHelper(private val context: Context) {
     private val appKey: String by lazy { context.getString(R.string.dropbox_app_key) }
-    private val gson = Gson()
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(Account::class.java, AccountAdapter())
+        .create()
     private val syncFileName = "/sync_data.json"
     private val clientIdentifier = "my-budget-app"
 
@@ -99,7 +101,7 @@ class DropboxHelper(private val context: Context) {
         return DbxClientV2(config, credential)
     }
 
-    suspend fun uploadSyncData(syncData: DropboxSyncData) = withContext(Dispatchers.IO) {
+    suspend fun uploadSyncData(syncData: SyncData) = withContext(Dispatchers.IO) {
         val client = getClient() ?: throw Exception("Dropbox not connected")
         val content = gson.toJson(syncData)
         val inputStream = ByteArrayInputStream(content.toByteArray())
@@ -109,7 +111,7 @@ class DropboxHelper(private val context: Context) {
             .uploadAndFinish(inputStream)
     }
 
-    suspend fun downloadSyncData(): DropboxSyncData? = withContext(Dispatchers.IO) {
+    suspend fun downloadSyncData(): SyncData? = withContext(Dispatchers.IO) {
         val client = getClient() ?: throw Exception("Dropbox not connected")
         
         try {
@@ -117,8 +119,14 @@ class DropboxHelper(private val context: Context) {
             client.files().download(syncFileName).download(outputStream)
             val json = outputStream.toString()
             
-            val type = object : TypeToken<DropboxSyncData>() {}.type
-            gson.fromJson<DropboxSyncData>(json, type)
+            if (json.trim().startsWith("[")) {
+                // Handle legacy format if it somehow got there
+                val type = object : TypeToken<List<Expense>>() {}.type
+                val expenses: List<Expense> = gson.fromJson(json, type)
+                SyncData(expenses = expenses)
+            } else {
+                gson.fromJson(json, SyncData::class.java)
+            }
         } catch (e: com.dropbox.core.v2.files.DownloadErrorException) {
             if (e.errorValue.isPath && e.errorValue.pathValue.isNotFound) {
                 null
@@ -128,9 +136,3 @@ class DropboxHelper(private val context: Context) {
         }
     }
 }
-
-data class DropboxSyncData(
-    val schemaVersion: Int = 1,
-    val lastSyncTimestamp: Long,
-    val expenses: List<Expense>
-)

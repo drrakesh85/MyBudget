@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,8 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.hackerai.mybudget.ui.theme.MyBudgetTheme
@@ -24,6 +23,7 @@ import com.google.api.services.drive.DriveScopes
 import androidx.core.content.FileProvider
 import android.app.Activity
 import android.content.Intent
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 
@@ -35,6 +35,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val RC_GOOGLE_DRIVE_PERMISSION = 9001
+        private const val NAV_TAG = "NAV_BACK"
+        private const val SMS_TAG = "SMS_NAV"
     }
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -57,10 +59,34 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyBudgetTheme {
-                var currentScreen by remember { mutableStateOf(Screen.EXPENSE_LIST) }
+                val screenStack = remember { mutableStateListOf(Screen.EXPENSE_LIST) }
+                val currentScreen = screenStack.last()
+                
                 var selectedCategoryForTransactions by remember { mutableStateOf("") }
                 var selectedSummaryTypeForTransactions by remember { mutableStateOf("Category") }
                 expenseViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+
+                fun navigateTo(screen: Screen) {
+                    if (screenStack.lastOrNull() != screen) {
+                        Log.d(NAV_TAG, "Navigate to: $screen. Stack: ${screenStack.joinToString(" -> ")}")
+                        screenStack.add(screen)
+                    }
+                }
+
+                fun navigateBack() {
+                    if (screenStack.size > 1) {
+                        val from = screenStack.last()
+                        screenStack.removeAt(screenStack.size - 1)
+                        Log.d(NAV_TAG, "Navigate back from $from to ${screenStack.last()}. Stack size: ${screenStack.size}")
+                    } else {
+                        Log.d(NAV_TAG, "No more screens in stack. Minimizing app.")
+                        finish()
+                    }
+                }
+
+                BackHandler(enabled = true) {
+                    navigateBack()
+                }
                 
                 val googleSignInLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.StartActivityForResult()
@@ -107,9 +133,19 @@ class MainActivity : ComponentActivity() {
                     contract = ActivityResultContracts.OpenDocument()
                 ) { uri ->
                     uri?.let {
-                        contentResolver.openInputStream(it)?.use { stream ->
-                            expenseViewModel.importFromStream(stream) {
-                                Toast.makeText(this@MainActivity, "CSV Import complete!", Toast.LENGTH_SHORT).show()
+                        expenseViewModel.importFromUri(it) { result ->
+                            if (result.success) {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "CSV Import complete! Parsed ${result.parsedCount} records.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "CSV Import failed: ${result.errorMessage}",
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
                         }
                     }
@@ -119,11 +155,19 @@ class MainActivity : ComponentActivity() {
                     contract = ActivityResultContracts.OpenDocument()
                 ) { uri ->
                     uri?.let {
-                        contentResolver.openInputStream(it)?.use { stream ->
-                            // For now, using the same CSV parser as many people export CSV with .xls extension
-                            // In a real app, we'd use Apache POI or similar for true Excel
-                            expenseViewModel.importFromStream(stream) {
-                                Toast.makeText(this@MainActivity, "Excel/XLS Import complete!", Toast.LENGTH_SHORT).show()
+                        expenseViewModel.importFromUri(it) { result ->
+                            if (result.success) {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Import complete! Parsed ${result.parsedCount} records.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Import failed: ${result.errorMessage}",
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
                         }
                     }
@@ -153,6 +197,13 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val editingExpense by expenseViewModel.editingExpense.collectAsState()
+                
+                LaunchedEffect(editingExpense) {
+                    if (editingExpense != null) {
+                        Log.d(SMS_TAG, "SMS/Expense Preview opened: ${editingExpense?.rowId}")
+                    }
+                }
+
                 val accountNames by expenseViewModel.accounts.collectAsState()
                 val payees by expenseViewModel.payees.collectAsState()
                 val categories by expenseViewModel.categories.collectAsState()
@@ -173,8 +224,14 @@ class MainActivity : ComponentActivity() {
                         tagMap = tagMap,
                         payeeMap = payeeMap,
                         categorySubcategoryMap = categorySubcategoryMap,
-                        onSave = { expenseViewModel.saveReviewedExpenses(it) },
-                        onCancel = { expenseViewModel.cancelReview() },
+                        onSave = { 
+                            Log.d(SMS_TAG, "Save clicked for ${editingExpense?.rowId}")
+                            expenseViewModel.saveReviewedExpenses(it) 
+                        },
+                        onCancel = { 
+                            Log.d(SMS_TAG, "Cancel clicked for ${editingExpense?.rowId}")
+                            expenseViewModel.cancelReview() 
+                        },
                         onDelete = { expenseViewModel.deleteExpense(it) }
                     )
                 } else {
@@ -186,30 +243,30 @@ class MainActivity : ComponentActivity() {
                             Screen.EXPENSE_LIST -> {
                                 ExpenseListScreen(
                                     viewModel = expenseViewModel,
-                                    onNavigateToAccounts = { currentScreen = Screen.ACCOUNT_LIST },
-                                    onNavigateToBrowser = { currentScreen = Screen.ACCOUNT_SUMMARY },
-                                    onNavigateToSummary = { currentScreen = Screen.CATEGORY_SUMMARY },
-                                    onNavigateToCalendar = { currentScreen = Screen.CALENDAR_VIEW },
-                                    onNavigateToAccountSummary = { currentScreen = Screen.ACCOUNT_SUMMARY },
-                                    onNavigateToSettings = { currentScreen = Screen.SETTINGS },
-                                    onNavigateToSmsImport = { currentScreen = Screen.SMS_IMPORT }
+                                    onNavigateToAccounts = { navigateTo(Screen.ACCOUNT_LIST) },
+                                    onNavigateToBrowser = { navigateTo(Screen.ACCOUNT_SUMMARY) },
+                                    onNavigateToSummary = { navigateTo(Screen.CATEGORY_SUMMARY) },
+                                    onNavigateToCalendar = { navigateTo(Screen.CALENDAR_VIEW) },
+                                    onNavigateToAccountSummary = { navigateTo(Screen.ACCOUNT_SUMMARY) },
+                                    onNavigateToSettings = { navigateTo(Screen.SETTINGS) },
+                                    onNavigateToSmsImport = { navigateTo(Screen.SMS_IMPORT) }
                                 )
                             }
                             Screen.TRANSACTION_BROWSER -> {
                                 AccountSummaryScreen(
                                     viewModel = expenseViewModel,
-                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                    onManageAccounts = { currentScreen = Screen.ACCOUNT_LIST }
+                                    onBack = { navigateBack() },
+                                    onManageAccounts = { navigateTo(Screen.ACCOUNT_LIST) }
                                 )
                             }
                             Screen.CATEGORY_SUMMARY -> {
                                 CategorySummaryScreen(
                                     viewModel = expenseViewModel,
-                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onBack = { navigateBack() },
                                     onCategoryClick = { name, type ->
                                         selectedCategoryForTransactions = name
                                         selectedSummaryTypeForTransactions = type
-                                        currentScreen = Screen.CATEGORY_TRANSACTIONS
+                                        navigateTo(Screen.CATEGORY_TRANSACTIONS)
                                     }
                                 )
                             }
@@ -218,29 +275,29 @@ class MainActivity : ComponentActivity() {
                                     viewModel = expenseViewModel,
                                     filterValue = selectedCategoryForTransactions,
                                     filterType = selectedSummaryTypeForTransactions,
-                                    onBack = { currentScreen = Screen.CATEGORY_SUMMARY }
+                                    onBack = { navigateBack() }
                                 )
                             }
                             Screen.CALENDAR_VIEW -> {
                                 CalendarScreen(
-                                    onBack = { currentScreen = Screen.EXPENSE_LIST }
+                                    onBack = { navigateBack() }
                                 )
                             }
                             Screen.ACCOUNT_SUMMARY -> {
                                 AccountSummaryScreen(
                                     viewModel = expenseViewModel,
-                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                    onManageAccounts = { currentScreen = Screen.ACCOUNT_LIST }
+                                    onBack = { navigateBack() },
+                                    onManageAccounts = { navigateTo(Screen.ACCOUNT_LIST) }
                                 )
                             }
                             Screen.SETTINGS -> {
                                 SettingsScreen(
-                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
-                                    onNavigateToCategorySettings = { currentScreen = Screen.CATEGORY_SETTINGS },
-                                    onNavigateToTagSettings = { currentScreen = Screen.TAG_SETTINGS },
-                                    onNavigateToAudit = { currentScreen = Screen.AUDIT },
-                                    onNavigateToAccountManagement = { currentScreen = Screen.ACCOUNT_LIST },
-                                    onNavigateToBackupRestore = { currentScreen = Screen.BACKUP_RESTORE },
+                                    onBack = { navigateBack() },
+                                    onNavigateToCategorySettings = { navigateTo(Screen.CATEGORY_SETTINGS) },
+                                    onNavigateToTagSettings = { navigateTo(Screen.TAG_SETTINGS) },
+                                    onNavigateToAudit = { navigateTo(Screen.AUDIT) },
+                                    onNavigateToAccountManagement = { navigateTo(Screen.ACCOUNT_LIST) },
+                                    onNavigateToBackupRestore = { navigateTo(Screen.BACKUP_RESTORE) },
                                     onGoogleDriveSync = {
                                         val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
                                         if (lastAccount != null) {
@@ -270,42 +327,46 @@ class MainActivity : ComponentActivity() {
                             }
                             Screen.BACKUP_RESTORE -> {
                                 BackupRestoreScreen(
-                                    onBack = { currentScreen = Screen.SETTINGS },
+                                    onBack = { navigateBack() },
                                     viewModel = expenseViewModel
                                 )
                             }
                             Screen.CATEGORY_SETTINGS -> {
                                 CategorySettingsScreen(
-                                    onBack = { currentScreen = Screen.SETTINGS }
+                                    onBack = { navigateBack() }
                                 )
                             }
                             Screen.TAG_SETTINGS -> {
                                 TagSettingsScreen(
-                                    onBack = { currentScreen = Screen.SETTINGS }
+                                    onBack = { navigateBack() }
                                 )
                             }
                             Screen.SMS_IMPORT -> {
                                 SmsImportScreen(
-                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onBack = { navigateBack() },
                                     onReviewTransaction = { expense ->
+                                        Log.d(SMS_TAG, "Opening SMS review for: ${expense.rowId}")
                                         expenseViewModel.editExpense(expense)
-                                        currentScreen = Screen.EXPENSE_LIST
+                                        // FIXED: Do NOT change currentScreen here. 
+                                        // The ReviewExpenseScreen is an overlay that will show because editingExpense is set.
+                                        // When it's finished, we'll still be on SMS_IMPORT.
                                     },
                                     accountFilter = expenseViewModel.selectedAccount.value
                                 )
                             }
                             Screen.ACCOUNT_LIST -> {
                                 AccountScreen(
-                                    onBack = { currentScreen = Screen.EXPENSE_LIST },
+                                    onBack = { navigateBack() },
                                     onNavigateToAccountSummary = { accountName ->
                                         expenseViewModel.filterByAccount(accountName)
-                                        currentScreen = Screen.ACCOUNT_SUMMARY
+                                        navigateTo(Screen.ACCOUNT_SUMMARY)
                                     }
                                 )
                             }
                             Screen.AUDIT -> {
                                 AuditScreen(
-                                    onBack = { currentScreen = Screen.SETTINGS }
+                                    onBack = { navigateBack() },
+                                    expenseViewModel = expenseViewModel
                                 )
                             }
                         }

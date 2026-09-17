@@ -111,7 +111,7 @@ fun ReviewExpenseScreen(
                     }
                 },
                 actions = {
-                    if (!expense.rowId.startsWith("new_")) {
+                    if (!expense.rowId.startsWith("new_") || expense.transactionType == "Transfer") {
                         IconButton(onClick = { onDelete(expense) }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
                         }

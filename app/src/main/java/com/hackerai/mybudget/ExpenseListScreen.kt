@@ -168,7 +168,9 @@ fun ExpenseListScreen(
             when (val state = uiState) {
                 is BudgetUiState.Success -> {
                     val filtered = state.expenses.filter { expense ->
-                        selectedAccount == null || expense.account == selectedAccount
+                        selectedAccount == null || 
+                        expense.account == selectedAccount || 
+                        (expense.transactionType == "Transfer" && expense.toAccount == selectedAccount)
                     }
                     val list = filtered.take(5)
                     if (list.isEmpty()) {

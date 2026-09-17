@@ -70,17 +70,23 @@ fun CategoryTransactionsScreen(
         
         allExpenses.filter { exp ->
             // 1. Account Filter
-            val accountMatches = selectedAccountName == null || exp.account == selectedAccountName
+            val isTransfer = exp.transactionType == "Transfer"
+            val isIncomingTransfer = isTransfer && selectedAccountName != null && exp.toAccount == selectedAccountName
+            
+            val accountMatches = selectedAccountName == null || exp.account == selectedAccountName || isIncomingTransfer
             if (!accountMatches) return@filter false
             
             // 2. Income/Expense Filter
-            val amountMatches = if (isIncomeMode) exp.amount > 0 else exp.amount < 0
+            val amountMatches = if (isIncomeMode) {
+                exp.amount > 0 || isIncomingTransfer
+            } else {
+                exp.amount < 0 && !isIncomingTransfer
+            }
             if (!amountMatches) return@filter false
             
             // 3. Transfer Filter
             if (withoutTransfer) {
-                val isTransfer = exp.transactionType == "Transfer" || exp.category == "Transfer"
-                if (isTransfer) return@filter false
+                if (isTransfer || exp.category == "Transfer") return@filter false
             }
             
             // 4. Grouping Value Filter

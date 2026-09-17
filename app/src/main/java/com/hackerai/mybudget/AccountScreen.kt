@@ -35,10 +35,39 @@ import java.text.NumberFormat
 import java.util.Locale
 
 sealed class AccountData {
-    data class Saving(val nickName: String, val bankName: String, val branchName: String, val accountNumber: String) : AccountData()
-    data class Loan(val nickName: String, val bankName: String, val branchName: String, val accountNumber: String) : AccountData()
-    data class CreditCard(val nickName: String, val bankName: String, val cardNumber: String, val expiry: String, val cvv: String, val billingDate: Int, val dueDate: Int) : AccountData()
-    data class Cash(val nickName: String) : AccountData()
+    abstract val smsSenderKeywords: String
+
+    data class Saving(
+        val nickName: String,
+        val bankName: String,
+        val branchName: String,
+        val accountNumber: String,
+        override val smsSenderKeywords: String = ""
+    ) : AccountData()
+
+    data class Loan(
+        val nickName: String,
+        val bankName: String,
+        val branchName: String,
+        val accountNumber: String,
+        override val smsSenderKeywords: String = ""
+    ) : AccountData()
+
+    data class CreditCard(
+        val nickName: String,
+        val bankName: String,
+        val cardNumber: String,
+        val expiry: String,
+        val cvv: String,
+        val billingDate: Int,
+        val dueDate: Int,
+        override val smsSenderKeywords: String = ""
+    ) : AccountData()
+
+    data class Cash(
+        val nickName: String,
+        override val smsSenderKeywords: String = ""
+    ) : AccountData()
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -249,18 +278,18 @@ fun AccountScreen(
                         val id = editingAccountData!!.id
                         val isHidden = editingAccountData!!.isHidden
                         val updated = when (data) {
-                            is AccountData.Saving -> SavingAccount(id, data.nickName, data.bankName, data.branchName, data.accountNumber, isHidden)
-                            is AccountData.Loan -> LoanAccount(id, data.nickName, data.bankName, data.branchName, data.accountNumber, isHidden)
-                            is AccountData.CreditCard -> CreditCardAccount(id, data.nickName, data.bankName, data.cardNumber, data.expiry, data.cvv, data.billingDate, data.dueDate, isHidden)
-                            is AccountData.Cash -> CashAccount(id, data.nickName, isHidden)
+                            is AccountData.Saving -> SavingAccount(id, data.nickName, data.bankName, data.branchName, data.accountNumber, isHidden, data.smsSenderKeywords)
+                            is AccountData.Loan -> LoanAccount(id, data.nickName, data.bankName, data.branchName, data.accountNumber, isHidden, data.smsSenderKeywords)
+                            is AccountData.CreditCard -> CreditCardAccount(id, data.nickName, data.bankName, data.cardNumber, data.expiry, data.cvv, data.billingDate, data.dueDate, isHidden, data.smsSenderKeywords)
+                            is AccountData.Cash -> CashAccount(id, data.nickName, isHidden, data.smsSenderKeywords)
                         }
                         viewModel.updateAccount(updated)
                     } else {
                         when (data) {
-                            is AccountData.Saving -> viewModel.addSavingAccount(data.nickName, data.bankName, data.branchName, data.accountNumber)
-                            is AccountData.Loan -> viewModel.addLoanAccount(data.nickName, data.bankName, data.branchName, data.accountNumber)
-                            is AccountData.CreditCard -> viewModel.addCreditCardAccount(data.nickName, data.bankName, data.cardNumber, data.expiry, data.cvv, data.billingDate, data.dueDate)
-                            is AccountData.Cash -> viewModel.addCashAccount(data.nickName)
+                            is AccountData.Saving -> viewModel.addSavingAccount(data.nickName, data.bankName, data.branchName, data.accountNumber, data.smsSenderKeywords)
+                            is AccountData.Loan -> viewModel.addLoanAccount(data.nickName, data.bankName, data.branchName, data.accountNumber, data.smsSenderKeywords)
+                            is AccountData.CreditCard -> viewModel.addCreditCardAccount(data.nickName, data.bankName, data.cardNumber, data.expiry, data.cvv, data.billingDate, data.dueDate, data.smsSenderKeywords)
+                            is AccountData.Cash -> viewModel.addCashAccount(data.nickName, data.smsSenderKeywords)
                         }
                     }
                     showAddDialog = false
@@ -384,6 +413,7 @@ fun AddAccountDialog(editingAccount: Account?, onDismiss: () -> Unit, onAdd: (Ac
     var cvv by remember { mutableStateOf((editingAccount as? CreditCardAccount)?.cvv ?: "") }
     var billingDate by remember { mutableStateOf((editingAccount as? CreditCardAccount)?.billingDate?.toString() ?: "") }
     var dueDate by remember { mutableStateOf((editingAccount as? CreditCardAccount)?.dueDate?.toString() ?: "") }
+    var smsSenderKeywords by remember { mutableStateOf(editingAccount?.smsSenderKeywords ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -424,15 +454,25 @@ fun AddAccountDialog(editingAccount: Account?, onDismiss: () -> Unit, onAdd: (Ac
                     }
                     AccountType.CASH -> {}
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("SMS Smart Matching", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                TextField(
+                    value = smsSenderKeywords,
+                    onValueChange = { smsSenderKeywords = it },
+                    label = { Text("SMS Sender/Keywords (e.g. JTEDE-S)") },
+                    placeholder = { Text("Comma separated") },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {
             Button(onClick = {
                 val data = when (selectedType) {
-                    AccountType.SAVING -> AccountData.Saving(nickName, bankName, branchName, accountNumber)
-                    AccountType.LOAN -> AccountData.Loan(nickName, bankName, branchName, accountNumber)
-                    AccountType.CREDIT_CARD -> AccountData.CreditCard(nickName, bankName, cardNumber, expiry, cvv, billingDate.toIntOrNull() ?: 1, dueDate.toIntOrNull() ?: 1)
-                    AccountType.CASH -> AccountData.Cash(nickName)
+                    AccountType.SAVING -> AccountData.Saving(nickName, bankName, branchName, accountNumber, smsSenderKeywords)
+                    AccountType.LOAN -> AccountData.Loan(nickName, bankName, branchName, accountNumber, smsSenderKeywords)
+                    AccountType.CREDIT_CARD -> AccountData.CreditCard(nickName, bankName, cardNumber, expiry, cvv, billingDate.toIntOrNull() ?: 1, dueDate.toIntOrNull() ?: 1, smsSenderKeywords)
+                    AccountType.CASH -> AccountData.Cash(nickName, smsSenderKeywords)
                 }
                 onAdd(data)
             }) { Text(if (editingAccount == null) "Add" else "Update") }

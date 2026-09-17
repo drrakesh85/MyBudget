@@ -15,9 +15,9 @@ class TransactionParserTest {
         )
         val result = TransactionParser.parse(sms)
         assertNotNull(result)
-        assertEquals(-500.0, result?.amount, 0.01)
-        assertEquals("Expense", result?.transactionType)
-        assertEquals("HDFCBK", result?.account)
+        assertEquals(-500.0, result!!.amount, 0.01)
+        assertEquals("Expense", result.transactionType)
+        assertEquals("HDFCBK", result.account)
     }
 
     @Test
@@ -30,8 +30,8 @@ class TransactionParserTest {
         )
         val result = TransactionParser.parse(sms)
         assertNotNull(result)
-        assertEquals(1200.0, result?.amount, 0.01)
-        assertEquals("Income", result?.transactionType)
+        assertEquals(1200.0, result!!.amount, 0.01)
+        assertEquals("Income", result.transactionType)
     }
 
     @Test
@@ -56,6 +56,6 @@ class TransactionParserTest {
         )
         val result = TransactionParser.parse(sms)
         assertNotNull(result)
-        assertEquals(-100.0, result?.amount, 0.01)
+        assertEquals(-100.0, result!!.amount, 0.01)
     }
 }
