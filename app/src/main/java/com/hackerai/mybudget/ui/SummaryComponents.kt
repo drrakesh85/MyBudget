@@ -141,6 +141,23 @@ fun formatSummaryAmount(amount: Double): String {
     return formatter.format(amount).replace("₹", "").trim()
 }
 
+/**
+ * Formats a transaction amount with semantic signs: + for Credit/Income, − for Debit/Expense.
+ * Prevents double signs by taking the absolute value before prefixing.
+ */
+fun formatTransactionAmount(amount: Double, type: String, isIncomingTransfer: Boolean = false): String {
+    val formatter = NumberFormat.getCurrencyInstance(Locale("en", "IN"))
+    val absAmount = kotlin.math.abs(amount)
+    val formattedValue = formatter.format(absAmount).replace("₹", "").trim()
+    
+    return when {
+        type == "Income" || isIncomingTransfer -> "+$formattedValue"
+        type == "Expense" || type == "Transfer" -> "−$formattedValue"
+        amount >= 0 -> "+$formattedValue"
+        else -> "−$formattedValue"
+    }
+}
+
 fun getOffsetWeekRange(offset: Int): Pair<LocalDate, LocalDate> {
     val base = LocalDate.now().plusWeeks(offset.toLong())
     val start = base.minusDays((base.dayOfWeek.value - 1).toLong())

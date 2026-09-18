@@ -347,21 +347,16 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
             val currentState = _uiState.value
             if (currentState !is BudgetUiState.Success) return@launch
             try {
+                // Optimized bulk save
+                repository.saveExpenses(expenses, isPendingReview = false, isDiscarded = false)
+
                 var currentExpenses = currentState.expenses
                 var currentPending = currentState.pendingSms
 
                 expenses.forEach { expense ->
                     val isExisting = currentExpenses.any { it.rowId == expense.rowId }
-                    val wasPending = currentPending.any { it.rowId == expense.rowId }
-
-                    repository.approveExpense(expense)
-
-                    currentExpenses = if (isExisting || wasPending) {
-                        if (isExisting) {
-                            currentExpenses.map { if (it.rowId == expense.rowId) expense else it }
-                        } else {
-                            currentExpenses + expense
-                        }
+                    currentExpenses = if (isExisting) {
+                        currentExpenses.map { if (it.rowId == expense.rowId) expense else it }
                     } else {
                         currentExpenses + expense
                     }
@@ -372,9 +367,9 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.value = currentState.copy(expenses = currentExpenses, pendingSms = currentPending)
                 _editingExpense.value = null
                 refreshSummaries(currentExpenses)
-                Log.d("SMS_NAV", "Room save SUCCESS. Pending SMS count: ${currentPending.size}")
+                Log.d("SMS_NAV", "Room bulk save SUCCESS. Pending SMS count: ${currentPending.size}")
             } catch (e: Exception) {
-                Log.e("SMS_NAV", "Room save FAILED", e)
+                Log.e("SMS_NAV", "Room bulk save FAILED", e)
                 _uiState.value = BudgetUiState.Error(e.message ?: "Failed to save expenses")
             }
         }
@@ -592,6 +587,8 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 return@launch
             }
             
+            val dummyTransactions = mutableListOf<Expense>()
+            
             lines.drop(1).forEach { line ->
                 if (line.isBlank()) return@forEach
                 val tokens = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)".toRegex())
@@ -599,15 +596,40 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 if (tokens.size >= 2) {
                     val type = tokens[0]
                     when (type) {
-                        "CATEGORY" -> if (categories) repository.addDummyTransaction(tokens[1], tokens.getOrNull(2) ?: "", tokens.getOrNull(3) ?: "Expense")
-                        "TAG" -> if (tags) repository.addDummyTag(tokens[1])
+                        "CATEGORY" -> if (categories) {
+                            dummyTransactions.add(Expense.createEmpty().copy(
+                                category = tokens[1],
+                                subcategory = tokens.getOrNull(2) ?: "",
+                                transactionType = tokens.getOrNull(3) ?: "Expense",
+                                amount = 0.0,
+                                status = "system",
+                                rowId = "system_cat_${tokens[1]}_${tokens.getOrNull(2) ?: ""}"
+                            ))
+                        }
+                        "TAG" -> if (tags) {
+                            dummyTransactions.add(Expense.createEmpty().copy(
+                                tag = tokens[1],
+                                amount = 0.0,
+                                status = "system",
+                                rowId = "system_tag_${tokens[1]}"
+                            ))
+                        }
                         "PAYEE", "PAYER" -> if ((type == "PAYEE" && payees) || (type == "PAYER" && payers)) {
-                            val dummy = Expense.createEmpty().copy(payeePayer = tokens[1], amount = 0.0, status = "system")
-                            repository.saveExpense(dummy)
+                            dummyTransactions.add(Expense.createEmpty().copy(
+                                payeePayer = tokens[1],
+                                amount = 0.0,
+                                status = "system",
+                                rowId = "system_payee_${tokens[1]}"
+                            ))
                         }
                     }
                 }
             }
+            
+            if (dummyTransactions.isNotEmpty()) {
+                repository.saveExpenses(dummyTransactions, isPendingReview = false, isDiscarded = false)
+            }
+
             loadExpenses()
             onComplete()
         }

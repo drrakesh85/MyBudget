@@ -7,14 +7,18 @@ import kotlinx.coroutines.withContext
 
 class SmsRepository(private val context: Context) {
 
-    suspend fun fetchSmsMessages(): List<SmsMessage> = withContext(Dispatchers.IO) {
+    suspend fun fetchSmsMessages(since: Long = 0L): List<SmsMessage> = withContext(Dispatchers.IO) {
         val messages = mutableListOf<SmsMessage>()
-        android.util.Log.d("SmsRepository", "Fetching SMS messages...")
+        android.util.Log.d("SmsRepository", "Fetching SMS messages since $since...")
+        
+        val selection = if (since > 0) "${Telephony.Sms.DATE} > ?" else null
+        val selectionArgs = if (since > 0) arrayOf(since.toString()) else null
+
         val cursor = context.contentResolver.query(
             Telephony.Sms.CONTENT_URI,
             arrayOf(Telephony.Sms._ID, Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
-            null,
-            null,
+            selection,
+            selectionArgs,
             "${Telephony.Sms.DATE} DESC"
         )
         

@@ -422,6 +422,7 @@ fun SmsImportScreen(
 
 @Composable
 fun SmsTransactionItem(transaction: Expense, isSelected: Boolean, onToggle: () -> Unit) {
+    val displayAmount = com.hackerai.mybudget.ui.formatTransactionAmount(transaction.amount, transaction.transactionType)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -436,7 +437,7 @@ fun SmsTransactionItem(transaction: Expense, isSelected: Boolean, onToggle: () -
             Text("${transaction.date} ${transaction.time} • ${transaction.account}", fontSize = 12.sp, color = Color.Gray)
         }
         Text(
-            text = String.format(java.util.Locale.getDefault(), "%.2f", transaction.amount),
+            text = displayAmount,
             color = if (transaction.amount < 0) Color.Red else Color(0xFF2E7D32),
             fontWeight = FontWeight.Bold
         )
@@ -446,6 +447,7 @@ fun SmsTransactionItem(transaction: Expense, isSelected: Boolean, onToggle: () -
 
 @Composable
 fun SmsReviewItem(transaction: Expense, isSelected: Boolean, onToggle: () -> Unit, onClick: () -> Unit, onMarkReviewed: () -> Unit, onDiscard: () -> Unit) {
+    val displayAmount = com.hackerai.mybudget.ui.formatTransactionAmount(transaction.amount, transaction.transactionType)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -461,7 +463,7 @@ fun SmsReviewItem(transaction: Expense, isSelected: Boolean, onToggle: () -> Uni
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = String.format(java.util.Locale.getDefault(), "%.2f", transaction.amount),
+                text = displayAmount,
                 color = if (transaction.amount < 0) Color.Red else Color(0xFF2E7D32),
                 fontWeight = FontWeight.Bold
             )

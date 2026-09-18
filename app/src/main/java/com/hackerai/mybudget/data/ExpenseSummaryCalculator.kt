@@ -29,13 +29,29 @@ object ExpenseSummaryCalculator {
     }
 
     fun currentBalance(expenses: List<Expense>, account: String? = null): Double {
-        if (account == null) return expenses.sumOf { it.amount }
+        if (account == null) {
+            // Net worth view: only consider real Income and Expenses
+            return expenses.sumOf { exp ->
+                val absVal = kotlin.math.abs(exp.amount)
+                when (exp.transactionType) {
+                    "Income" -> absVal
+                    "Expense" -> -absVal
+                    else -> 0.0 // Transfers are neutral across all accounts
+                }
+            }
+        }
         return expenses.sumOf { exp ->
+            val absVal = kotlin.math.abs(exp.amount)
             when {
-                // Incoming transfer
-                exp.transactionType == "Transfer" && exp.toAccount == account -> kotlin.math.abs(exp.amount)
-                // Outgoing transaction from this account (Transfer or Expense)
-                exp.account == account -> exp.amount
+                exp.transactionType == "Transfer" -> {
+                    when {
+                        exp.toAccount == account -> absVal // Inflow
+                        exp.account == account -> -absVal // Outflow
+                        else -> 0.0
+                    }
+                }
+                exp.transactionType == "Income" -> absVal
+                exp.transactionType == "Expense" -> -absVal
                 else -> 0.0
             }
         }
@@ -46,13 +62,27 @@ object ExpenseSummaryCalculator {
             val time = parseDate(expense.date) ?: return@filter false
             time in start..end
         }
-        val income = inRange.sumOf { exp ->
-            if (exp.amount > 0) exp.amount 
-            else if (account != null && exp.transactionType == "Transfer" && exp.toAccount == account) kotlin.math.abs(exp.amount)
-            else 0.0
-        }
-        val expense = inRange.sumOf { exp ->
-            if (exp.amount < 0 && (account == null || exp.account == account)) exp.amount else 0.0
+        
+        var income = 0.0
+        var expense = 0.0
+        
+        inRange.forEach { exp ->
+            val absVal = kotlin.math.abs(exp.amount)
+            if (account == null) {
+                when (exp.transactionType) {
+                    "Income" -> income += absVal
+                    "Expense" -> expense -= absVal
+                }
+            } else {
+                when {
+                    exp.transactionType == "Transfer" -> {
+                        if (exp.toAccount == account) income += absVal
+                        else if (exp.account == account) expense -= absVal
+                    }
+                    exp.transactionType == "Income" -> income += absVal
+                    exp.transactionType == "Expense" -> expense -= absVal
+                }
+            }
         }
         return Triple(income, expense, income + expense)
     }

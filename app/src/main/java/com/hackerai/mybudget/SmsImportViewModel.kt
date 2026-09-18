@@ -93,10 +93,17 @@ class SmsImportViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
+            val startTime = System.currentTimeMillis()
             try {
-                val messages = smsRepository.fetchSmsMessages()
+                // Safe boundary: Scan last 90 days. 
+                // This covers all relevant recent transactions while avoiding reading years of spam.
+                val ninetyDaysAgo = System.currentTimeMillis() - (90L * 24 * 60 * 60 * 1000)
+                
+                val messages = smsRepository.fetchSmsMessages(since = ninetyDaysAgo)
                 val accounts = accountRepository.accounts.value
-                val allExistingRowIds = expenseRepository.getAllForSync().map { it.rowId }.toSet()
+                
+                // Optimized DB call: Only fetch rowIds, not full objects
+                val allExistingRowIds = expenseRepository.getAllRowIds()
                 
                 val detectedRaw = messages.mapNotNull { TransactionParser.parse(it) }
                 val detected = detectedRaw
@@ -137,10 +144,14 @@ class SmsImportViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                 
+                val duration = System.currentTimeMillis() - startTime
+                android.util.Log.i("SMS_PERF", "Scan complete in ${duration}ms. Read: ${messages.size}, Parsed: ${detectedRaw.size}, Found new: ${detected.size}")
+
                 _scannedToImport.value = detected
                 _selectedTransactions.value = detected.map { it.rowId }.toSet()
                 _isLoading.value = false
             } catch (e: Exception) {
+                android.util.Log.e("SMS_PERF", "Error scanning SMS", e)
                 _error.value = e.message ?: "Failed to scan SMS"
                 _isLoading.value = false
             }
@@ -236,7 +247,8 @@ class SmsImportViewModel(application: Application) : AndroidViewModel(applicatio
             val state = uiState.value
             if (state is SmsImportUiState.Success) {
                 val toImport = state.toImport.filter { _selectedTransactions.value.contains(it.rowId) }
-                toImport.forEach { expenseRepository.saveExpense(it, isPendingReview = true, isDiscarded = false) }
+                // Optimized bulk save
+                expenseRepository.saveExpenses(toImport, isPendingReview = true, isDiscarded = false)
                 _scannedToImport.value = _scannedToImport.value.filter { item -> !toImport.any { it.rowId == item.rowId } }
                 onComplete()
             }
@@ -248,7 +260,8 @@ class SmsImportViewModel(application: Application) : AndroidViewModel(applicatio
             val state = uiState.value
             if (state is SmsImportUiState.Success) {
                 val toDiscard = state.toImport.filter { _selectedTransactions.value.contains(it.rowId) }
-                toDiscard.forEach { expenseRepository.saveExpense(it, isPendingReview = false, isDiscarded = true) }
+                // Optimized bulk save
+                expenseRepository.saveExpenses(toDiscard, isPendingReview = false, isDiscarded = true)
                 _scannedToImport.value = _scannedToImport.value.filter { item -> !toDiscard.any { it.rowId == item.rowId } }
                 onComplete()
             }

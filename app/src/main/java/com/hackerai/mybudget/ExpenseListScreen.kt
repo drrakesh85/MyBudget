@@ -265,6 +265,7 @@ fun DashboardExpenseItem(expense: Expense, onClick: () -> Unit) {
 
 @Composable
 fun ExpenseItem(expense: Expense, onClick: () -> Unit) {
+    val displayAmount = com.hackerai.mybudget.ui.formatTransactionAmount(expense.amount, expense.transactionType)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -279,7 +280,7 @@ fun ExpenseItem(expense: Expense, onClick: () -> Unit) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    formatAmount(expense.amount),
+                    text = displayAmount,
                     color = if (expense.amount < 0) Color.Red else Color(0xFF2E7D32),
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp

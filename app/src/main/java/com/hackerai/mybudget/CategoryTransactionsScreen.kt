@@ -266,6 +266,7 @@ fun CategoryTransactionsScreen(
                                 TransactionListItemComponent(
                                     expense = expense,
                                     closingBalance = runningTotals[expense.rowId] ?: 0.0,
+                                    selectedAccount = selectedAccountName,
                                     onClick = { viewModel.editExpense(expense) }
                                 )
                             }
@@ -358,7 +359,10 @@ fun DayHeaderComponent(date: String, dayExpenses: List<Expense>, dayEndTotal: Do
 }
 
 @Composable
-fun TransactionListItemComponent(expense: Expense, closingBalance: Double, onClick: () -> Unit) {
+fun TransactionListItemComponent(expense: Expense, closingBalance: Double, selectedAccount: String?, onClick: () -> Unit) {
+    val isIncomingTransfer = expense.transactionType == "Transfer" && selectedAccount != null && expense.toAccount == selectedAccount
+    val displayAmountText = com.hackerai.mybudget.ui.formatTransactionAmount(expense.amount, expense.transactionType, isIncomingTransfer)
+    
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -387,8 +391,8 @@ fun TransactionListItemComponent(expense: Expense, closingBalance: Double, onCli
                 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = formatSimple(expense.amount),
-                        color = if (expense.amount < 0) Color(0xFFC62828) else Color(0xFF2E7D32),
+                        text = displayAmountText,
+                        color = if (isIncomingTransfer || expense.amount > 0) Color(0xFF2E7D32) else Color(0xFFC62828),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp
                     )

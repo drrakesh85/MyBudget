@@ -248,9 +248,14 @@ fun ReviewExpenseScreen(
                 }
                 Button(
                     onClick = {
+                        val rawAmount = totalAmount.toDoubleOrNull() ?: expense.amount
+                        val absAmount = kotlin.math.abs(rawAmount)
+                        // Enforce sign in database: Income is positive, Expense/Transfer is negative
+                        val semanticAmount = if (transactionType == "Income") absAmount else -absAmount
+
                         val mainExpense = expense.copy(
                             description = description,
-                            amount = totalAmount.toDoubleOrNull() ?: expense.amount,
+                            amount = semanticAmount,
                             date = date,
                             time = time,
                             category = if (transactionType == "Transfer") "Transfer" else category,
@@ -264,9 +269,11 @@ fun ReviewExpenseScreen(
                         
                         val results = if (isSplitEnabled && splits.isNotEmpty()) {
                             splits.mapIndexed { i, split ->
+                                val splitRaw = split.amount.toDoubleOrNull() ?: 0.0
+                                val splitSemantic = if (transactionType == "Income") kotlin.math.abs(splitRaw) else -kotlin.math.abs(splitRaw)
                                 mainExpense.copy(
                                     rowId = if (i == 0) mainExpense.rowId else "${mainExpense.rowId}_split_$i",
-                                    amount = split.amount.toDoubleOrNull() ?: 0.0,
+                                    amount = splitSemantic,
                                     category = split.category,
                                     subcategory = split.subcategory,
                                     splitTotal = totalAmount

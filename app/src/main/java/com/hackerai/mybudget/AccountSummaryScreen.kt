@@ -100,12 +100,16 @@ fun AccountSummaryScreen(
     val runningBalances = remember(accountExpenses, selectedAccountName) {
         var current = 0.0
         accountExpenses.associate { exp ->
-            val actualAmount = if (exp.transactionType == "Transfer" && exp.toAccount == selectedAccountName) {
-                kotlin.math.abs(exp.amount)
-            } else {
-                exp.amount
+            val absVal = kotlin.math.abs(exp.amount)
+            val semanticAmount = when {
+                exp.transactionType == "Transfer" -> {
+                    if (exp.toAccount == selectedAccountName) absVal else -absVal
+                }
+                exp.transactionType == "Income" -> absVal
+                exp.transactionType == "Expense" -> -absVal
+                else -> 0.0
             }
-            current += actualAmount
+            current += semanticAmount
             exp.rowId to current
         }
     }
@@ -410,7 +414,7 @@ fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double) {
 fun TransactionListItem(expense: Expense, closingBalance: Double, selectedAccount: String?, onClick: () -> Unit) {
     val isTransfer = expense.transactionType == "Transfer"
     val isIncomingTransfer = isTransfer && expense.toAccount == selectedAccount
-    val displayAmount = if (isIncomingTransfer) kotlin.math.abs(expense.amount) else expense.amount
+    val displayAmountText = com.hackerai.mybudget.ui.formatTransactionAmount(expense.amount, expense.transactionType, isIncomingTransfer)
 
     Surface(
         modifier = Modifier
@@ -448,8 +452,8 @@ fun TransactionListItem(expense: Expense, closingBalance: Double, selectedAccoun
                 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = formatSimple(displayAmount),
-                        color = if (displayAmount < 0) Color(0xFFC62828) else Color(0xFF2E7D32),
+                        text = displayAmountText,
+                        color = if (isIncomingTransfer || expense.amount > 0) Color(0xFF2E7D32) else Color(0xFFC62828),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp
                     )

@@ -39,6 +39,13 @@ class ExpenseRepository(
         expenseDao.insert(updated.toEntity(isPendingReview, isDiscarded))
     }
 
+    suspend fun saveExpenses(expenses: List<Expense>, isPendingReview: Boolean = false, isDiscarded: Boolean = false) = withContext(Dispatchers.IO) {
+        if (expenses.isEmpty()) return@withContext
+        val now = System.currentTimeMillis()
+        val entities = expenses.map { it.copy(lastModified = now).toEntity(isPendingReview, isDiscarded) }
+        expenseDao.insertAll(entities)
+    }
+
     suspend fun approveExpense(expense: Expense) = withContext(Dispatchers.IO) {
         val updated = expense.copy(lastModified = System.currentTimeMillis())
         expenseDao.insert(updated.toEntity(isPendingReview = false, isDiscarded = false))
@@ -111,10 +118,16 @@ class ExpenseRepository(
     }
 
     suspend fun scanAndStoreSmsExpenses(messages: List<SmsMessage>): List<Expense> = withContext(Dispatchers.IO) {
+        if (messages.isEmpty()) return@withContext emptyList()
+        
         val detected = messages.mapNotNull { TransactionParser.parse(it) }
-        val newExpenses = detected.filter { expense ->
-            !expenseDao.exists(expense.rowId)
-        }
+        if (detected.isEmpty()) return@withContext emptyList()
+
+        val candidateIds = detected.map { it.rowId }
+        val existingIds = expenseDao.getExistingIds(candidateIds).toSet()
+
+        val newExpenses = detected.filter { !existingIds.contains(it.rowId) }
+
         if (newExpenses.isNotEmpty()) {
             expenseDao.insertAll(newExpenses.map { it.toEntity(isPendingReview = true, isDiscarded = false) })
         }
@@ -187,6 +200,10 @@ class ExpenseRepository(
 
     suspend fun getAllForSync(): List<Expense> = withContext(Dispatchers.IO) {
         expenseDao.getAllForSync().map { it.toExpense() }
+    }
+
+    suspend fun getAllRowIds(): Set<String> = withContext(Dispatchers.IO) {
+        expenseDao.getAllRowIds().toSet()
     }
 
     suspend fun insertSyncData(expenses: List<Expense>) = withContext(Dispatchers.IO) {

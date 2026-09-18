@@ -44,6 +44,12 @@ interface ExpenseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(expenses: List<ExpenseEntity>)
 
+    @Query("SELECT rowId FROM expenses")
+    suspend fun getAllRowIds(): List<String>
+
+    @Query("SELECT rowId FROM expenses WHERE rowId IN (:ids)")
+    suspend fun getExistingIds(ids: List<String>): List<String>
+
     @androidx.room.Transaction
     suspend fun fullRestore(expenses: List<ExpenseEntity>) {
         // We don't delete existing data unless specified, but for a "Full Restore" 
