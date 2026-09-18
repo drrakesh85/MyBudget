@@ -5,6 +5,12 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 
+data class AccountTotal(
+    val accountName: String,
+    val totalIncome: Double,
+    val totalExpense: Double
+)
+
 @Dao
 interface ExpenseDao {
 
@@ -49,6 +55,31 @@ interface ExpenseDao {
 
     @Query("SELECT rowId FROM expenses WHERE rowId IN (:ids)")
     suspend fun getExistingIds(ids: List<String>): List<String>
+
+    @Query("SELECT DISTINCT account FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0")
+    suspend fun getUniqueAccountNames(): List<String>
+
+    @Query("""
+        SELECT accountName, SUM(income) as totalIncome, SUM(expense) as totalExpense
+        FROM (
+          SELECT account as accountName, abs(amount) as income, 0 as expense
+          FROM expenses WHERE transactionType = 'Income' AND isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0
+          UNION ALL
+          SELECT account as accountName, 0 as income, -abs(amount) as expense
+          FROM expenses WHERE transactionType = 'Expense' AND isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0
+          UNION ALL
+          SELECT account as accountName, 0 as income, -abs(amount) as expense
+          FROM expenses WHERE transactionType = 'Transfer' AND isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0
+          UNION ALL
+          SELECT toAccount as accountName, abs(amount) as income, 0 as expense
+          FROM expenses WHERE transactionType = 'Transfer' AND isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 AND toAccount IS NOT NULL
+        )
+        GROUP BY accountName
+    """)
+    fun getAccountTotalsFlow(): kotlinx.coroutines.flow.Flow<List<AccountTotal>>
+
+    @Query("SELECT * FROM expenses WHERE (account = :accountName OR (transactionType = 'Transfer' AND toAccount = :accountName)) AND isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC, time DESC, rowId DESC")
+    suspend fun getExpensesForAccount(accountName: String): List<ExpenseEntity>
 
     @androidx.room.Transaction
     suspend fun fullRestore(expenses: List<ExpenseEntity>) {

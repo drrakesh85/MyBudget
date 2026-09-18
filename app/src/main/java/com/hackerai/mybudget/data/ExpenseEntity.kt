@@ -83,5 +83,11 @@ fun ExpenseEntity.toExpense() = Expense(
     transactionType = transactionType,
     toAccount = toAccount,
     lastModified = lastModified,
-    isDeleted = isDeleted
+    isDeleted = isDeleted,
+    dateMillis = try {
+        java.time.LocalDate.parse(date, java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"))
+            .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+    } catch (e: Exception) {
+        0L
+    }
 )

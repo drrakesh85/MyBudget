@@ -58,10 +58,7 @@ object ExpenseSummaryCalculator {
     }
 
     private fun periodSummary(expenses: List<Expense>, start: Long, end: Long, account: String?): Triple<Double, Double, Double> {
-        val inRange = expenses.filter { expense ->
-            val time = parseDate(expense.date) ?: return@filter false
-            time in start..end
-        }
+        val inRange = expenses.filter { it.dateMillis in start..end }
         
         var income = 0.0
         var expense = 0.0
@@ -87,6 +84,8 @@ object ExpenseSummaryCalculator {
         return Triple(income, expense, income + expense)
     }
 
+    // This parseDate is no longer needed for summaries if we use dateMillis, 
+    // but kept for compatibility or other uses.
     private fun parseDate(dateStr: String): Long? {
         if (dateStr.equals("Date", ignoreCase = true)) return null
         return try {

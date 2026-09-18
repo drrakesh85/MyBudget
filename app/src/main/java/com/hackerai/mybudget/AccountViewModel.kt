@@ -32,31 +32,13 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
     val accountBalances: StateFlow<List<AccountBalance>> = combine(
         accounts,
-        expenseRepository.allExpensesFlow()
-    ) { accountList, expenseList ->
+        expenseRepository.getAccountTotalsFlow()
+    ) { accountList, totalsList ->
+        val totalsMap = totalsList.associateBy { it.accountName }
         accountList.filter { !it.isHidden }.map { account ->
-            val accountName = account.nickName
-            val relevantExpenses = expenseList.filter { 
-                it.account == accountName || (it.transactionType == "Transfer" && it.toAccount == accountName) 
-            }
-            
-            var income = 0.0
-            var expense = 0.0
-            
-            relevantExpenses.forEach { exp ->
-                if (exp.transactionType == "Transfer") {
-                    if (exp.toAccount == accountName) {
-                        income += kotlin.math.abs(exp.amount)
-                    } else {
-                        expense += exp.amount
-                    }
-                } else if (exp.transactionType == "Income") {
-                    income += exp.amount
-                } else if (exp.transactionType == "Expense") {
-                    expense += exp.amount
-                }
-            }
-
+            val total = totalsMap[account.nickName]
+            val income = total?.totalIncome ?: 0.0
+            val expense = total?.totalExpense ?: 0.0
             AccountBalance(account, income, expense, income + expense)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

@@ -16,8 +16,19 @@ class ExpenseRepository(
         expenseDao.getAllExpenses().map { it.toExpense() }
     }
 
+    suspend fun getExpensesForAccount(accountName: String): List<Expense> = withContext(Dispatchers.IO) {
+        expenseDao.getExpensesForAccount(accountName).map { it.toExpense() }
+    }
+
     fun allExpensesFlow(): kotlinx.coroutines.flow.Flow<List<Expense>> =
         expenseDao.getAllExpensesFlow().map { list -> list.map { it.toExpense() } }
+
+    fun getAccountTotalsFlow(): kotlinx.coroutines.flow.Flow<List<AccountTotal>> =
+        expenseDao.getAccountTotalsFlow()
+
+    suspend fun getUniqueAccountNames(): List<String> = withContext(Dispatchers.IO) {
+        expenseDao.getUniqueAccountNames()
+    }
 
     suspend fun loadPendingReviewExpenses(): List<Expense> = withContext(Dispatchers.IO) {
         expenseDao.getPendingReviewExpenses().map { it.toExpense() }

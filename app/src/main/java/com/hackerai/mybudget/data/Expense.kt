@@ -28,7 +28,8 @@ data class Expense(
     val transactionType: String = "Expense",
     val toAccount: String? = null,
     val lastModified: Long = System.currentTimeMillis(),
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    val dateMillis: Long = 0L // Pre-calculated for performance
 ) {
     /**
      * Generates a deterministic identity for a transaction based on its core properties.

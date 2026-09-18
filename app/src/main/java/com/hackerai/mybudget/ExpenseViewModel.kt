@@ -120,8 +120,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         
         // Auto-Discovery: Ensure all accounts in transactions are registered
         viewModelScope.launch {
-            val expenses = repository.loadExpenses()
-            val uniqueAccountNames = expenses.map { it.account }.filter { it.isNotBlank() }.distinct()
+            val uniqueAccountNames = repository.getUniqueAccountNames()
             val currentNicknames = accountRepository.getUniqueNickNames()
             
             uniqueAccountNames.forEach { name ->

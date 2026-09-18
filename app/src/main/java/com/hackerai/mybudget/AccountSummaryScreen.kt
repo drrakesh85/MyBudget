@@ -94,7 +94,7 @@ fun AccountSummaryScreen(
     // Filter and Sort
     val accountExpenses = remember(allExpenses, selectedAccountName) {
         allExpenses.filter { selectedAccountName == null || it.account == selectedAccountName || (it.transactionType == "Transfer" && it.toAccount == selectedAccountName) }
-            .sortedWith(compareBy({ parseDateLocal(it.date) }, { it.time }, { it.rowId }))
+            .sortedWith(compareBy({ it.dateMillis }, { it.time }, { it.rowId }))
     }
 
     val runningBalances = remember(accountExpenses, selectedAccountName) {
@@ -115,14 +115,23 @@ fun AccountSummaryScreen(
     }
 
     val visibleExpenses = remember(accountExpenses, currentRange, dateRange, searchQuery, selectedCategory, selectedType) {
+        val customStart = dateRange.first
+        val customEnd = dateRange.second
+        
+        val periodStart = if (customStart == null && currentRange.first != null) {
+            currentRange.first!!.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        } else null
+        
+        val periodEnd = if (customEnd == null && currentRange.second != null) {
+            currentRange.second!!.atTime(23, 59, 59).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        } else null
+
         accountExpenses.filter { exp ->
-            val dateMatches = if (dateRange.first != null && dateRange.second != null) {
-                val expDateMillis = parseDate(exp.date) ?: 0L
-                expDateMillis in dateRange.first!!..dateRange.second!!
-            } else if (currentRange.first != null && currentRange.second != null) {
-                val expDate = parseDateLocal(exp.date)
-                expDate != null && !expDate.isBefore(currentRange.first) && !expDate.isAfter(currentRange.second)
-            } else true
+            val dateMatches = when {
+                customStart != null && customEnd != null -> exp.dateMillis in customStart..customEnd
+                periodStart != null && periodEnd != null -> exp.dateMillis in periodStart..periodEnd
+                else -> true
+            }
             
             val searchMatches = if (searchQuery.isNotBlank()) {
                 exp.payeePayer.contains(searchQuery, ignoreCase = true) ||
@@ -143,7 +152,7 @@ fun AccountSummaryScreen(
             }
 
             dateMatches && searchMatches && categoryMatches && typeMatches
-        }.sortedWith(compareByDescending<Expense> { parseDateLocal(it.date) }.thenByDescending { it.time }.thenByDescending { it.rowId })
+        }.sortedWith(compareByDescending<Expense> { it.dateMillis }.thenByDescending { it.time }.thenByDescending { it.rowId })
     }
 
     val groupedExpenses = remember(visibleExpenses) {

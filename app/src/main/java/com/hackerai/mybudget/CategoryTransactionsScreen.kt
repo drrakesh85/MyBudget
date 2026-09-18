@@ -112,10 +112,12 @@ fun CategoryTransactionsScreen(
 
     // Filter for current view period
     val visibleExpenses = remember(filteredExpensesSet, currentRange, searchQuery) {
+        val start = currentRange.first?.atStartOfDay(java.time.ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+        val end = currentRange.second?.atTime(23, 59, 59)?.atZone(java.time.ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+
         filteredExpensesSet.filter { exp ->
-            val dateMatches = if (currentRange.first != null && currentRange.second != null) {
-                val expDate = parseDateLocal(exp.date)
-                expDate != null && !expDate.isBefore(currentRange.first) && !expDate.isAfter(currentRange.second)
+            val dateMatches = if (start != null && end != null) {
+                exp.dateMillis in start..end
             } else true
             
             val searchMatches = if (searchQuery.isNotBlank()) {
@@ -127,7 +129,7 @@ fun CategoryTransactionsScreen(
             } else true
 
             dateMatches && searchMatches
-        }.sortedWith(compareByDescending<Expense> { parseDateLocal(it.date) }.thenByDescending { it.time }.thenByDescending { it.rowId })
+        }.sortedWith(compareByDescending<Expense> { it.dateMillis }.thenByDescending { it.time }.thenByDescending { it.rowId })
     }
 
     // Grouping for the list
