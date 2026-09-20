@@ -28,6 +28,35 @@ object ExpenseSummaryCalculator {
         )
     }
 
+    /**
+     * Calculates semantic Income, Expense, and Balance for a list of transactions.
+     * Reuses the same logic as periodSummary to ensure consistency across the app.
+     */
+    fun calculateListSummary(expenses: List<Expense>, account: String?): Triple<Double, Double, Double> {
+        var income = 0.0
+        var expense = 0.0
+        
+        expenses.forEach { exp ->
+            val absVal = kotlin.math.abs(exp.amount)
+            if (account == null) {
+                when (exp.transactionType) {
+                    "Income" -> income += absVal
+                    "Expense" -> expense -= absVal
+                }
+            } else {
+                when {
+                    exp.transactionType == "Transfer" -> {
+                        if (exp.toAccount == account) income += absVal
+                        else if (exp.account == account) expense -= absVal
+                    }
+                    exp.transactionType == "Income" -> income += absVal
+                    exp.transactionType == "Expense" -> expense -= absVal
+                }
+            }
+        }
+        return Triple(income, expense, income + expense)
+    }
+
     fun currentBalance(expenses: List<Expense>, account: String? = null): Double {
         if (account == null) {
             // Net worth view: only consider real Income and Expenses
@@ -59,29 +88,7 @@ object ExpenseSummaryCalculator {
 
     private fun periodSummary(expenses: List<Expense>, start: Long, end: Long, account: String?): Triple<Double, Double, Double> {
         val inRange = expenses.filter { it.dateMillis in start..end }
-        
-        var income = 0.0
-        var expense = 0.0
-        
-        inRange.forEach { exp ->
-            val absVal = kotlin.math.abs(exp.amount)
-            if (account == null) {
-                when (exp.transactionType) {
-                    "Income" -> income += absVal
-                    "Expense" -> expense -= absVal
-                }
-            } else {
-                when {
-                    exp.transactionType == "Transfer" -> {
-                        if (exp.toAccount == account) income += absVal
-                        else if (exp.account == account) expense -= absVal
-                    }
-                    exp.transactionType == "Income" -> income += absVal
-                    exp.transactionType == "Expense" -> expense -= absVal
-                }
-            }
-        }
-        return Triple(income, expense, income + expense)
+        return calculateListSummary(inRange, account)
     }
 
     // This parseDate is no longer needed for summaries if we use dateMillis, 

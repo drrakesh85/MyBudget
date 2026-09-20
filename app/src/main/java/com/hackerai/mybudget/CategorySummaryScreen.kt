@@ -120,7 +120,7 @@ fun CategorySummaryScreen(
             }
         },
         bottomBar = {
-            BottomSummaryBarFiltered(filteredExpenses)
+            BottomSummaryBarFiltered(filteredExpenses, selectedAccount)
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize().background(Color(0xFFF8F9FA))) {

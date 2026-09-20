@@ -6,6 +6,7 @@ sealed interface Account {
     val type: AccountType
     val isHidden: Boolean
     val smsSenderKeywords: String
+    val smsParsingEnabled: Boolean
 }
 
 enum class AccountType {
@@ -19,7 +20,8 @@ data class SavingAccount(
     val branchName: String,
     val accountNumber: String,
     override val isHidden: Boolean = false,
-    override val smsSenderKeywords: String = ""
+    override val smsSenderKeywords: String = "",
+    override val smsParsingEnabled: Boolean = true
 ) : Account {
     override val type: AccountType = AccountType.SAVING
 }
@@ -31,7 +33,8 @@ data class LoanAccount(
     val branchName: String,
     val accountNumber: String,
     override val isHidden: Boolean = false,
-    override val smsSenderKeywords: String = ""
+    override val smsSenderKeywords: String = "",
+    override val smsParsingEnabled: Boolean = true
 ) : Account {
     override val type: AccountType = AccountType.LOAN
 }
@@ -46,7 +49,8 @@ data class CreditCardAccount(
     val billingDate: Int,
     val dueDate: Int,
     override val isHidden: Boolean = false,
-    override val smsSenderKeywords: String = ""
+    override val smsSenderKeywords: String = "",
+    override val smsParsingEnabled: Boolean = true
 ) : Account {
     override val type: AccountType = AccountType.CREDIT_CARD
 }
@@ -55,7 +59,8 @@ data class CashAccount(
     override val id: String,
     override val nickName: String,
     override val isHidden: Boolean = false,
-    override val smsSenderKeywords: String = ""
+    override val smsSenderKeywords: String = "",
+    override val smsParsingEnabled: Boolean = false
 ) : Account {
     override val type: AccountType = AccountType.CASH
 }

@@ -109,33 +109,52 @@ class SmsImportViewModel(application: Application) : AndroidViewModel(applicatio
                 val detected = detectedRaw
                     .filter { !allExistingRowIds.contains(it.rowId) }
                     .mapNotNull { expense ->
-                        val smsAddress = expense.paymentMethod
                         val smsBody = expense.description
+                        val eligibleAccounts = accounts.filter { it.smsParsingEnabled }
 
-                        val matchedAccount = accounts.find { acc ->
-                            val numericMatch = when (acc) {
-                                is SavingAccount -> acc.accountNumber.isNotEmpty() && acc.accountNumber != "00000000" && acc.accountNumber.endsWith(expense.account)
-                                is LoanAccount -> acc.accountNumber.isNotEmpty() && acc.accountNumber != "00000000" && acc.accountNumber.endsWith(expense.account)
-                                is CreditCardAccount -> acc.cardNumber.isNotEmpty() && acc.cardNumber != "0000" && acc.cardNumber.endsWith(expense.account)
-                                else -> false
-                            }
-                            if (numericMatch) return@find true
+                        // 1. Priority: Strong numeric match (last 4 digits)
+                        val numericMatches = eligibleAccounts.filter { acc ->
+                            val expenseDigits = expense.account.filter { it.isDigit() }
+                            if (expenseDigits.isEmpty()) return@filter false
 
-                            val keywordsString = acc.smsSenderKeywords ?: ""
-                            if (keywordsString.isNotBlank()) {
-                                val keywords = keywordsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                                val senderMatches = keywords.any { smsAddress.contains(it, ignoreCase = true) }
-                                val bodyMatches = keywords.any { smsBody.contains(it, ignoreCase = true) }
-                                if (senderMatches || bodyMatches) return@find true
+                            val accNumberDigits = when (acc) {
+                                is SavingAccount -> acc.accountNumber
+                                is LoanAccount -> acc.accountNumber
+                                is CreditCardAccount -> acc.cardNumber
+                                else -> ""
+                            }.filter { it.isDigit() }
+
+                            if (accNumberDigits.isEmpty() || accNumberDigits == "00000000" || accNumberDigits == "0000") {
+                                return@filter false
                             }
-                            false
+
+                            // Match if one ends with the other (handle 3 or 4 digits correctly)
+                            accNumberDigits.endsWith(expenseDigits) || expenseDigits.endsWith(accNumberDigits)
+                        }
+
+                        val matchedNickName = when {
+                            // Exactly one strong match -> Assign
+                            numericMatches.size == 1 -> numericMatches.first().nickName
+                            
+                            // Multiple strong matches -> Unresolved (Ambiguous)
+                            numericMatches.size > 1 -> ""
+                            
+                            // No strong match -> Try keyword matching
+                            else -> {
+                                val keywordMatches = eligibleAccounts.filter { acc ->
+                                    val keywordsString = acc.smsSenderKeywords ?: ""
+                                    if (keywordsString.isNotBlank()) {
+                                        val keywords = keywordsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                                        // Match against body only as per requirement
+                                        keywords.any { smsBody.contains(it, ignoreCase = true) }
+                                    } else false
+                                }
+                                // Exactly one keyword match -> Assign
+                                if (keywordMatches.size == 1) keywordMatches.first().nickName else ""
+                            }
                         }
                         
-                        val expenseWithCorrectAccount = if (matchedAccount != null) {
-                            expense.copy(account = matchedAccount.nickName)
-                        } else {
-                            expense
-                        }
+                        val expenseWithCorrectAccount = expense.copy(account = matchedNickName)
 
                         if (_accountFilter == null || _accountFilter == expenseWithCorrectAccount.account) {
                             expenseWithCorrectAccount

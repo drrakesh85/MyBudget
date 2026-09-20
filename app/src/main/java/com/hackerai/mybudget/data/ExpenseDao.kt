@@ -14,10 +14,10 @@ data class AccountTotal(
 @Dao
 interface ExpenseDao {
 
-    @Query("SELECT * FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC")
+    @Query("SELECT * FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC, time DESC, rowId DESC")
     fun getAllExpensesFlow(): kotlinx.coroutines.flow.Flow<List<ExpenseEntity>>
 
-    @Query("SELECT * FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC")
+    @Query("SELECT * FROM expenses WHERE isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC, time DESC, rowId DESC")
     suspend fun getAllExpenses(): List<ExpenseEntity>
 
     @Query("SELECT * FROM expenses WHERE isPendingReview = 1 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC")
@@ -80,6 +80,9 @@ interface ExpenseDao {
 
     @Query("SELECT * FROM expenses WHERE (account = :accountName OR (transactionType = 'Transfer' AND toAccount = :accountName)) AND isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC, time DESC, rowId DESC")
     suspend fun getExpensesForAccount(accountName: String): List<ExpenseEntity>
+
+    @Query("SELECT * FROM expenses WHERE (account = :accountName OR (transactionType = 'Transfer' AND toAccount = :accountName)) AND isPendingReview = 0 AND isDiscarded = 0 AND isDeleted = 0 ORDER BY date DESC, time DESC, rowId DESC")
+    fun getExpensesForAccountFlow(accountName: String): kotlinx.coroutines.flow.Flow<List<ExpenseEntity>>
 
     @androidx.room.Transaction
     suspend fun fullRestore(expenses: List<ExpenseEntity>) {

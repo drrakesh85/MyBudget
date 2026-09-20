@@ -88,10 +88,8 @@ fun TimeFilterChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun BottomSummaryBarFiltered(filtered: List<Expense>) {
-    val income = filtered.filter { it.amount > 0 }.sumOf { it.amount }
-    val expense = filtered.filter { it.amount < 0 }.sumOf { it.amount }
-    val balance = income + expense
+fun BottomSummaryBarFiltered(filtered: List<Expense>, account: String? = null) {
+    val (income, expense, balance) = com.hackerai.mybudget.data.ExpenseSummaryCalculator.calculateListSummary(filtered, account)
     
     Surface(
         modifier = Modifier.fillMaxWidth(),

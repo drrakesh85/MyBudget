@@ -214,7 +214,7 @@ fun CategoryTransactionsScreen(
             }
         },
         bottomBar = {
-            BottomSummaryBarFiltered(visibleExpenses)
+            BottomSummaryBarFiltered(visibleExpenses, selectedAccountName)
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -262,7 +262,7 @@ fun CategoryTransactionsScreen(
                             val dayEndTotal = runningTotals[expenses.first().rowId] ?: 0.0
                             
                             item {
-                                DayHeaderComponent(date, expenses, dayEndTotal)
+                                DayHeaderComponent(date, expenses, dayEndTotal, selectedAccountName)
                             }
                             items(expenses, key = { it.rowId }) { expense ->
                                 TransactionListItemComponent(
@@ -311,12 +311,11 @@ fun CategoryTransactionsScreen(
 }
 
 @Composable
-fun DayHeaderComponent(date: String, dayExpenses: List<Expense>, dayEndTotal: Double) {
+fun DayHeaderComponent(date: String, dayExpenses: List<Expense>, dayEndTotal: Double, selectedAccount: String?) {
     val parsedDate = parseDateLocal(date)
     val dayName = parsedDate?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale.getDefault())?.uppercase() ?: ""
     
-    val income = dayExpenses.filter { it.amount > 0 }.sumOf { it.amount }
-    val expense = dayExpenses.filter { it.amount < 0 }.sumOf { it.amount }
+    val (income, expense, _) = ExpenseSummaryCalculator.calculateListSummary(dayExpenses, selectedAccount)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),

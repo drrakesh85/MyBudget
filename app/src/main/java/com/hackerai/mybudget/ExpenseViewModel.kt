@@ -7,12 +7,7 @@ import com.hackerai.mybudget.data.*
 import android.content.Intent
 import android.util.Log
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -108,6 +103,17 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
 
     private val _editingExpense = MutableStateFlow<Expense?>(null)
     val editingExpense: StateFlow<Expense?> = _editingExpense.asStateFlow()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val accountExpenses: StateFlow<List<Expense>> = _selectedAccount
+        .flatMapLatest { accountName: String? ->
+            if (accountName == null) {
+                repository.allExpensesFlow()
+            } else {
+                repository.getExpensesForAccountFlow(accountName)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         // Collect accounts from accountRepository to keep them in global order
@@ -544,30 +550,63 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun exportAppData(categories: Boolean, tags: Boolean, payers: Boolean, payees: Boolean, onResult: (String) -> Unit) {
+    fun exportAppData(categories: Boolean, subcategories: Boolean, tags: Boolean, payers: Boolean, payees: Boolean, accounts: Boolean, onResult: (String) -> Unit) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             val sb = StringBuilder()
-            sb.append("Type,Value1,Value2,Value3\n")
+            // Standardizing on 14 columns to avoid mismatches
+            // Type, Val1, Val2, Val3, Val4, Val5, Val6, Val7, Val8, Val9, Val10, Val11, Val12, Val13
+            sb.append("Type,Value1,Value2,Value3,Value4,Value5,Value6,Value7,Value8,Value9,Value10,Value11,Value12,Value13\n")
             
             if (categories) {
                 _categorySubcategoryMap.value.forEach { (cat, subs) ->
-                    if (subs.isEmpty()) {
-                        sb.append("CATEGORY,\"$cat\",\"\",\"Expense\"\n")
+                    val safeCat = (cat ?: "").replace("\"", "\"\"")
+                    if (!subcategories || subs.isEmpty()) {
+                        sb.append("CATEGORY,\"$safeCat\",\"\",\"Expense\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n")
                     } else {
                         subs.forEach { sub ->
-                            sb.append("CATEGORY,\"$cat\",\"$sub\",\"Expense\"\n")
+                            val safeSub = (sub ?: "").replace("\"", "\"\"")
+                            sb.append("CATEGORY,\"$safeCat\",\"$safeSub\",\"Expense\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n")
                         }
                     }
                 }
             }
             if (tags) {
-                _tags.value.forEach { sb.append("TAG,\"$it\",\"\",\"\"\n") }
+                _tags.value.forEach { 
+                    val safeTag = (it ?: "").replace("\"", "\"\"")
+                    sb.append("TAG,\"$safeTag\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
+                }
             }
             if (payees) {
-                _payees.value.forEach { sb.append("PAYEE,\"$it\",\"\",\"\"\n") }
+                _payees.value.forEach { 
+                    val safePayee = (it ?: "").replace("\"", "\"\"")
+                    sb.append("PAYEE,\"$safePayee\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
+                }
             }
             if (payers) {
-                _payees.value.forEach { sb.append("PAYER,\"$it\",\"\",\"\"\n") }
+                _payees.value.forEach { 
+                    val safePayer = (it ?: "").replace("\"", "\"\"")
+                    sb.append("PAYER,\"$safePayer\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
+                }
+            }
+            if (accounts) {
+                accountRepository.accounts.value.forEach { acc ->
+                    val type = acc.type.name
+                    val isHidden = if (acc.isHidden) "1" else "0"
+                    val smsEnabled = if (acc.smsParsingEnabled) "1" else "0"
+                    
+                    val fields = when (acc) {
+                        is SavingAccount -> listOf(acc.nickName, type, acc.bankName, acc.branchName, acc.accountNumber, "", "", "", "", "", acc.smsSenderKeywords, smsEnabled, isHidden)
+                        is LoanAccount -> listOf(acc.nickName, type, acc.bankName, acc.branchName, acc.accountNumber, "", "", "", "", "", acc.smsSenderKeywords, smsEnabled, isHidden)
+                        is CreditCardAccount -> listOf(acc.nickName, type, acc.bankName, "", "", acc.cardNumber, acc.expiry, "", acc.billingDate.toString(), acc.dueDate.toString(), acc.smsSenderKeywords, smsEnabled, isHidden)
+                        is CashAccount -> listOf(acc.nickName, type, "", "", "", "", "", "", "", "", acc.smsSenderKeywords, smsEnabled, isHidden)
+                    }
+                    // Extremely defensive mapping to avoid NPE in replace
+                    val row = "ACCOUNT," + fields.joinToString(",") { item ->
+                        val safeItem = if (item == null) "" else item.toString()
+                        "\"${safeItem.replace("\"", "\"\"")}\""
+                    }
+                    sb.append(row).append("\n")
+                }
             }
             val result = sb.toString()
             android.util.Log.d("Backup", "Generated CSV with ${result.length} characters")
@@ -577,7 +616,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun importAppData(csvContent: String, categories: Boolean, tags: Boolean, payers: Boolean, payees: Boolean, onComplete: () -> Unit) {
+    fun importAppData(csvContent: String, categories: Boolean, subcategories: Boolean, tags: Boolean, payers: Boolean, payees: Boolean, accounts: Boolean, onComplete: () -> Unit) {
         viewModelScope.launch {
             val lines = csvContent.lines()
             android.util.Log.d("Restore", "Importing CSV with ${lines.size} lines")
@@ -587,6 +626,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
             }
             
             val dummyTransactions = mutableListOf<Expense>()
+            val importedAccounts = mutableListOf<Account>()
             
             lines.drop(1).forEach { line ->
                 if (line.isBlank()) return@forEach
@@ -596,13 +636,14 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                     val type = tokens[0]
                     when (type) {
                         "CATEGORY" -> if (categories) {
+                            val subName = if (subcategories) (tokens.getOrNull(2) ?: "") else ""
                             dummyTransactions.add(Expense.createEmpty().copy(
                                 category = tokens[1],
-                                subcategory = tokens.getOrNull(2) ?: "",
+                                subcategory = subName,
                                 transactionType = tokens.getOrNull(3) ?: "Expense",
                                 amount = 0.0,
                                 status = "system",
-                                rowId = "system_cat_${tokens[1]}_${tokens.getOrNull(2) ?: ""}"
+                                rowId = "system_cat_${tokens[1]}_$subName"
                             ))
                         }
                         "TAG" -> if (tags) {
@@ -621,12 +662,62 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                                 rowId = "system_payee_${tokens[1]}"
                             ))
                         }
+                        "ACCOUNT" -> if (accounts && tokens.size >= 13) {
+                            val nickName = tokens[1]
+                            val accTypeStr = tokens[2]
+                            val bankName = tokens[3]
+                            val branchName = tokens[4]
+                            val accNo = tokens[5]
+                            val cardNo = tokens[6]
+                            val expiry = tokens[7]
+                            // tokens[8] is CVV (skipped)
+                            val billingDate = tokens[9].toIntOrNull() ?: 1
+                            val dueDate = tokens[10].toIntOrNull() ?: 1
+                            val smsKeywords = tokens[11]
+                            val smsEnabled = tokens.getOrNull(12) == "1"
+                            val isHidden = tokens.getOrNull(13) == "1"
+                            
+                            val id = UUID.randomUUID().toString()
+                            val acc = when (accTypeStr) {
+                                "SAVING" -> SavingAccount(id, nickName, bankName, branchName, accNo, isHidden, smsKeywords, smsEnabled)
+                                "LOAN" -> LoanAccount(id, nickName, bankName, branchName, accNo, isHidden, smsKeywords, smsEnabled)
+                                "CREDIT_CARD" -> CreditCardAccount(id, nickName, bankName, cardNo, expiry, "", billingDate, dueDate, isHidden, smsKeywords, smsEnabled)
+                                "CASH" -> CashAccount(id, nickName, isHidden, smsKeywords, smsEnabled)
+                                else -> null
+                            }
+                            acc?.let { importedAccounts.add(it) }
+                        }
                     }
                 }
             }
             
             if (dummyTransactions.isNotEmpty()) {
                 repository.saveExpenses(dummyTransactions, isPendingReview = false, isDiscarded = false)
+            }
+            
+            if (importedAccounts.isNotEmpty()) {
+                // To preserve order, we can either clear and add, or merge.
+                // The user said "except transactions and balances", so we just update settings.
+                // If account with same nickname exists, we should probably update it.
+                val currentAccounts = accountRepository.accounts.value.toMutableList()
+                importedAccounts.forEach { imp ->
+                    val existingIndex = currentAccounts.indexOfFirst { it.nickName == imp.nickName }
+                    if (existingIndex != -1) {
+                        // Update existing (preserve ID if needed, but since we use nickname as key for transactions...)
+                        // Actually let's preserve the existing ID.
+                        val existing = currentAccounts[existingIndex]
+                        val updated = when (imp) {
+                            is SavingAccount -> imp.copy(id = existing.id)
+                            is LoanAccount -> imp.copy(id = existing.id)
+                            is CreditCardAccount -> imp.copy(id = existing.id, cvv = (existing as? CreditCardAccount)?.cvv ?: "")
+                            is CashAccount -> imp.copy(id = existing.id)
+                        }
+                        currentAccounts[existingIndex] = updated
+                    } else {
+                        currentAccounts.add(imp)
+                    }
+                }
+                accountRepository.updateOrder(currentAccounts)
             }
 
             loadExpenses()

@@ -434,7 +434,8 @@ fun SmsTransactionItem(transaction: Expense, isSelected: Boolean, onToggle: () -
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(transaction.description, maxLines = 1, fontWeight = FontWeight.Medium)
-            Text("${transaction.date} ${transaction.time} • ${transaction.account}", fontSize = 12.sp, color = Color.Gray)
+            val accountLabel = transaction.account.ifBlank { "Unresolved" }
+            Text("${transaction.date} ${transaction.time} • $accountLabel", fontSize = 12.sp, color = Color.Gray)
         }
         Text(
             text = displayAmount,
@@ -459,7 +460,8 @@ fun SmsReviewItem(transaction: Expense, isSelected: Boolean, onToggle: () -> Uni
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(transaction.description, maxLines = 1, fontWeight = FontWeight.Medium)
-            Text("${transaction.date} • ${transaction.account}", fontSize = 12.sp, color = Color.Gray)
+            val accountLabel = transaction.account.ifBlank { "Unresolved" }
+            Text("${transaction.date} • $accountLabel", fontSize = 12.sp, color = Color.Gray)
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(

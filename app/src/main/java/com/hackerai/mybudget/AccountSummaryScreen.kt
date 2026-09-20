@@ -36,6 +36,7 @@ fun AccountSummaryScreen(
 ) {
     val selectedAccountName by viewModel.selectedAccount.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val accountExpenses by viewModel.accountExpenses.collectAsState()
     
     var timeFilter by remember { mutableStateOf("All") }
     var periodOffset by remember { mutableIntStateOf(0) }
@@ -67,8 +68,6 @@ fun AccountSummaryScreen(
         }
     }
 
-    val allExpenses = (uiState as? BudgetUiState.Success)?.expenses ?: emptyList()
-
     // Calculate effective date range
     val currentRange = remember(timeFilter, periodOffset) {
         when (timeFilter) {
@@ -91,15 +90,14 @@ fun AccountSummaryScreen(
         } else "All Time"
     }
 
-    // Filter and Sort
-    val accountExpenses = remember(allExpenses, selectedAccountName) {
-        allExpenses.filter { selectedAccountName == null || it.account == selectedAccountName || (it.transactionType == "Transfer" && it.toAccount == selectedAccountName) }
-            .sortedWith(compareBy({ it.dateMillis }, { it.time }, { it.rowId }))
-    }
-
     val runningBalances = remember(accountExpenses, selectedAccountName) {
         var current = 0.0
-        accountExpenses.associate { exp ->
+        // We assume accountExpenses is already sorted correctly from the DB (date DESC, time DESC)
+        // But running balance calculation requires chronologically ascending order (oldest first).
+        // So we reverse it for calculation.
+        val sortedAsc = accountExpenses.sortedWith(compareBy({ it.dateMillis }, { it.time }, { it.rowId }))
+        
+        sortedAsc.associate { exp ->
             val absVal = kotlin.math.abs(exp.amount)
             val semanticAmount = when {
                 exp.transactionType == "Transfer" -> {
@@ -152,7 +150,8 @@ fun AccountSummaryScreen(
             }
 
             dateMatches && searchMatches && categoryMatches && typeMatches
-        }.sortedWith(compareByDescending<Expense> { it.dateMillis }.thenByDescending { it.time }.thenByDescending { it.rowId })
+        }
+        // Note: accountExpenses is already sorted DESC by DB query
     }
 
     val groupedExpenses = remember(visibleExpenses) {
@@ -259,7 +258,7 @@ fun AccountSummaryScreen(
             }
         },
         bottomBar = {
-            BottomSummaryBarFiltered(visibleExpenses)
+            BottomSummaryBarFiltered(visibleExpenses, selectedAccountName)
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -283,7 +282,7 @@ fun AccountSummaryScreen(
                         groupedExpenses.forEach { (date, expenses) ->
                             val dayEndBalance = runningBalances[expenses.first().rowId] ?: 0.0
                             item {
-                                DayHeader(date, expenses, dayEndBalance)
+                                DayHeader(date, expenses, dayEndBalance, selectedAccountName)
                             }
                             items(expenses, key = { it.rowId }) { expense ->
                                 TransactionListItem(
@@ -370,12 +369,11 @@ fun PeriodButton(label: String, isSelected: Boolean, modifier: Modifier = Modifi
 }
 
 @Composable
-fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double) {
+fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double, selectedAccount: String?) {
     val parsedDate = parseDateLocal(date)
     val dayName = parsedDate?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale.getDefault())?.uppercase() ?: ""
     
-    val income = dayExpenses.filter { it.amount > 0 }.sumOf { it.amount }
-    val expense = dayExpenses.filter { it.amount < 0 }.sumOf { it.amount }
+    val (income, expense, _) = ExpenseSummaryCalculator.calculateListSummary(dayExpenses, selectedAccount)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),

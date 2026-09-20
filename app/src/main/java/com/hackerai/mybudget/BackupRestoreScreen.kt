@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -35,21 +37,25 @@ fun BackupRestoreScreen(
     var tagsCheck by remember { mutableStateOf(true) }
     var payerCheck by remember { mutableStateOf(true) }
     var payeeCheck by remember { mutableStateOf(true) }
+    var accountsCheck by remember { mutableStateOf(true) }
+    var subcategoriesCheck by remember { mutableStateOf(true) }
 
+    var showBackupDialog by remember { mutableStateOf(false) }
     var showForceReplaceDialog by remember { mutableStateOf(false) }
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
+        contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
-        uri?.let {
-            viewModel.exportFullBackup { json ->
+        uri?.let { selectedUri ->
+            viewModel.exportAppData(categoriesCheck, subcategoriesCheck, tagsCheck, payerCheck, payeeCheck, accountsCheck) { csvData ->
                 try {
-                    context.contentResolver.openOutputStream(it)?.use { stream ->
-                        stream.write(json.toByteArray())
+                    context.contentResolver.openOutputStream(selectedUri)?.use { stream ->
+                        stream.write(csvData.toByteArray())
                         stream.flush()
                     }
-                    Toast.makeText(context, "Full backup saved successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Backup saved successfully", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
+                    android.util.Log.e("Backup", "Failed to save CSV", e)
                     Toast.makeText(context, "Failed to save backup: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
@@ -69,13 +75,13 @@ fun BackupRestoreScreen(
                     }
                     
                     if (content.trim().startsWith("{")) {
-                        // JSON Full Backup
+                        // JSON Full Backup (Disabled in UI but handling for safety)
                         viewModel.importFullBackup(content) {
                             Toast.makeText(context, "Full Restore complete!", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         // CSV Metadata Restore
-                        viewModel.importAppData(content, categoriesCheck, tagsCheck, payerCheck, payeeCheck) {
+                        viewModel.importAppData(content, categoriesCheck, subcategoriesCheck, tagsCheck, payerCheck, payeeCheck, accountsCheck) {
                             Toast.makeText(context, "Restore complete!", Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -140,26 +146,25 @@ fun BackupRestoreScreen(
 
             if (selectedTabIndex == 0) {
                 Button(
-                    onClick = { createDocumentLauncher.launch("my_budget_full_backup.json") },
+                    onClick = { showBackupDialog = true },
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium
                 ) {
-                    Text("BACKUP ALL DATA (JSON)")
+                    Text("BACKUP METADATA (CSV)")
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 OutlinedButton(
                     onClick = { 
-                        // Keep legacy CSV backup for categories only if needed
-                        viewModel.exportAppData(categoriesCheck, tagsCheck, payerCheck, payeeCheck) { csv ->
-                             // Using a different mechanism for this would be better but keeping it simple
+                        viewModel.exportFullBackup { json ->
+                            // Optional JSON backup
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = false // Disabled in favor of full JSON backup
+                    enabled = false 
                 ) {
-                    Text("Backup Metadata only (CSV)")
+                    Text("Backup Full Data (JSON)")
                 }
             } else {
                 Button(
@@ -176,10 +181,14 @@ fun BackupRestoreScreen(
             if (selectedTabIndex == 1) {
                 Spacer(modifier = Modifier.height(24.dp))
                 Text("Metadata Restore Options (CSV only):", style = MaterialTheme.typography.labelLarge)
+                CheckboxItem(label = "Account Details", checked = accountsCheck, onCheckedChange = { accountsCheck = it })
                 CheckboxItem(label = "Categories", checked = categoriesCheck, onCheckedChange = { categoriesCheck = it })
+                CheckboxItem(label = "Subcategories", checked = subcategoriesCheck, onCheckedChange = { subcategoriesCheck = it })
+                CheckboxItem(label = "Payer & Payee", checked = payerCheck || payeeCheck, onCheckedChange = { 
+                    payerCheck = it
+                    payeeCheck = it
+                })
                 CheckboxItem(label = "Tags", checked = tagsCheck, onCheckedChange = { tagsCheck = it })
-                CheckboxItem(label = "Payer", checked = payerCheck, onCheckedChange = { payerCheck = it })
-                CheckboxItem(label = "Payee", checked = payeeCheck, onCheckedChange = { payeeCheck = it })
             }
 
             if (selectedTabIndex == 1) {
@@ -205,6 +214,42 @@ fun BackupRestoreScreen(
                     Text("FORCE REPLACE GOOGLE DRIVE FROM LOCAL")
                 }
             }
+        }
+
+        if (showBackupDialog) {
+            AlertDialog(
+                onDismissRequest = { showBackupDialog = false },
+                title = { Text("Select Items to Backup") },
+                text = {
+                    val scrollState = rememberScrollState()
+                    Column(modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(scrollState)
+                    ) {
+                        CheckboxItem(label = "Account Details", checked = accountsCheck, onCheckedChange = { accountsCheck = it })
+                        CheckboxItem(label = "Categories", checked = categoriesCheck, onCheckedChange = { categoriesCheck = it })
+                        CheckboxItem(label = "Subcategories", checked = subcategoriesCheck, onCheckedChange = { subcategoriesCheck = it })
+                        CheckboxItem(label = "Payer & Payee", checked = payerCheck && payeeCheck, onCheckedChange = {
+                            payerCheck = it
+                            payeeCheck = it
+                        })
+                        CheckboxItem(label = "Tags", checked = tagsCheck, onCheckedChange = { tagsCheck = it })
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showBackupDialog = false
+                        createDocumentLauncher.launch("my_budget_settings_backup.csv")
+                    }) {
+                        Text("PROCEED")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showBackupDialog = false }) {
+                        Text("CANCEL")
+                    }
+                }
+            )
         }
 
         if (showForceReplaceDialog) {

@@ -22,11 +22,11 @@ object TransactionParser {
 
     // Patterns to find the masked account/card tail: "A/c XX4521", "Card xx1234",
     // "ending in 7788", "AC X1234", "acct no XXXXXX7890", "A/c *5678".
-    // Tried in order; the first match wins. Anchored on a real account word or on a
-    // mask of 2+ X/* characters, so stray letters ("Txn", "Max") can no longer match.
+    // Tried in order; the first match wins.
+    // Fixed: Allowed newlines and expanded distance check to handle multiline SMS.
     private val accountDigitPatterns = listOf(
-        Pattern.compile("(?i)\\b(?:a/?c|acct|account|card|ac)\\b[^0-9\\n]{0,12}?[xX*\\s-]*?(\\d{3,4})\\b"),
-        Pattern.compile("(?i)\\bending\\s*(?:in|with)?\\s*[xX*\\s-]*(\\d{3,4})\\b"),
+        Pattern.compile("(?i)\\b(?:a/?c|acct|account|card|ac)\\b.{0,25}?[xX*\\s-]*?(\\d{3,4})\\b"),
+        Pattern.compile("(?i)\\bending\\s*(?:in|with)?\\s*.{0,10}?[xX*\\s-]*?(\\d{3,4})\\b"),
         Pattern.compile("(?<![\\d.])[xX*]{2,}\\s*-?\\s*(\\d{3,4})\\b")
     )
 

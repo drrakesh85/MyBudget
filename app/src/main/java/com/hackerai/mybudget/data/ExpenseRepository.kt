@@ -20,6 +20,9 @@ class ExpenseRepository(
         expenseDao.getExpensesForAccount(accountName).map { it.toExpense() }
     }
 
+    fun getExpensesForAccountFlow(accountName: String): kotlinx.coroutines.flow.Flow<List<Expense>> =
+        expenseDao.getExpensesForAccountFlow(accountName).map { list -> list.map { it.toExpense() } }
+
     fun allExpensesFlow(): kotlinx.coroutines.flow.Flow<List<Expense>> =
         expenseDao.getAllExpensesFlow().map { list -> list.map { it.toExpense() } }
 
