@@ -117,7 +117,7 @@ fun CategoryTransactionsScreen(
 
         filteredExpensesSet.filter { exp ->
             val dateMatches = if (start != null && end != null) {
-                exp.dateMillis in start..end
+                exp.getOrDeriveDateMillis() in start..end
             } else true
             
             val searchMatches = if (searchQuery.isNotBlank()) {
@@ -129,7 +129,7 @@ fun CategoryTransactionsScreen(
             } else true
 
             dateMatches && searchMatches
-        }.sortedWith(compareByDescending<Expense> { it.dateMillis }.thenByDescending { it.time }.thenByDescending { it.rowId })
+        }.sortedWith(compareByDescending<Expense> { it.getOrDeriveDateMillis() }.thenByDescending { it.time }.thenByDescending { it.rowId })
     }
 
     // Grouping for the list

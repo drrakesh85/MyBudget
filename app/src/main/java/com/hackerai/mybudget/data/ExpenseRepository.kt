@@ -212,6 +212,22 @@ class ExpenseRepository(
         }
     }
 
+    suspend fun getDistinctPayees(): List<String> = withContext(Dispatchers.IO) {
+        expenseDao.getDistinctPayees()
+    }
+
+    suspend fun getDistinctCategories(): List<String> = withContext(Dispatchers.IO) {
+        expenseDao.getDistinctCategories()
+    }
+
+    suspend fun getDistinctSubcategories(): List<String> = withContext(Dispatchers.IO) {
+        expenseDao.getDistinctSubcategories()
+    }
+
+    suspend fun getDistinctSubcategoriesForCategory(category: String): List<String> = withContext(Dispatchers.IO) {
+        expenseDao.getDistinctSubcategoriesForCategory(category)
+    }
+
     suspend fun getAllForSync(): List<Expense> = withContext(Dispatchers.IO) {
         expenseDao.getAllForSync().map { it.toExpense() }
     }
@@ -222,6 +238,10 @@ class ExpenseRepository(
 
     suspend fun insertSyncData(expenses: List<Expense>) = withContext(Dispatchers.IO) {
         expenseDao.fullRestore(expenses.map { it.toEntity() })
+    }
+
+    suspend fun fullReplaceSyncData(expenses: List<Expense>) = withContext(Dispatchers.IO) {
+        expenseDao.fullReplace(expenses.map { it.toEntity() })
     }
 
     suspend fun generateCsvData(): String = withContext(Dispatchers.IO) {

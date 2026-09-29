@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hackerai.mybudget.data.DateUtils
 import com.hackerai.mybudget.data.Expense
 import com.hackerai.mybudget.ui.*
 import java.text.NumberFormat
@@ -151,7 +152,7 @@ fun TransactionBrowserScreen(
                     is BudgetUiState.Success -> {
                         val filteredList = state.expenses.filter { expense ->
                             val dateMatches = if (dateRange.first != null && dateRange.second != null) {
-                                val expDate = parseDate(expense.date) ?: 0L
+                                val expDate = expense.getOrDeriveDateMillis()
                                 expDate in dateRange.first!!..dateRange.second!!
                             } else true
 
@@ -168,7 +169,7 @@ fun TransactionBrowserScreen(
                             } else true
 
                             !expense.isDeleted && dateMatches && accountMatches && categoryMatches && typeMatches && searchMatches
-                        }.sortedByDescending { parseDate(it.date) ?: 0L }
+                        }.sortedWith(compareByDescending<Expense> { it.getOrDeriveDateMillis() }.thenByDescending { it.time }.thenByDescending { it.rowId })
 
                         if (filteredList.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -244,12 +245,7 @@ fun TransactionBrowserScreen(
 @Composable
 fun DateHeader(dateStr: String) {
     val formatted = remember(dateStr) {
-        try {
-            val date = LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("dd-MM-yyyy"))
-            date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy EEE")).uppercase()
-        } catch (e: Exception) {
-            dateStr
-        }
+        DateUtils.formatDateHeader(dateStr)
     }
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -375,20 +371,48 @@ fun FilterDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Filter Transactions") },
+        title = { 
+            Text(
+                text = "Filter Transactions", 
+                fontSize = 20.sp, 
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF263238)
+            ) 
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 DropdownSelector("Account", accounts, acc) { acc = it }
                 DropdownSelector("Category", categories, cat) { cat = it }
                 DropdownSelector("Type", listOf("Income", "Expense", "Transfer"), type) { type = it }
             }
         },
         confirmButton = {
-            Button(onClick = { onApply(acc, cat, type) }) { Text("Apply") }
+            Button(
+                onClick = { onApply(acc, cat, type) },
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00B0FF)),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)
+            ) {
+                Text("Apply", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
         },
         dismissButton = {
-            TextButton(onClick = { onApply(null, null, null) }) { Text("Clear All") }
-        }
+            TextButton(
+                onClick = {
+                    acc = null
+                    cat = null
+                    type = null
+                    onApply(null, null, null)
+                }
+            ) {
+                Text("Clear All", color = Color(0xFF00B0FF), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+        },
+        containerColor = Color(0xFFF3EDF7),
+        shape = MaterialTheme.shapes.extraLarge
     )
 }
 
@@ -396,19 +420,39 @@ fun FilterDialog(
 @Composable
 fun DropdownSelector(label: String, items: List<String>, selected: String?, onSelect: (String?) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
+    Box(modifier = Modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = selected ?: "All",
             onValueChange = {},
             label = { Text(label) },
             readOnly = true,
-            modifier = Modifier.fillMaxWidth().clickable { expanded = true },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+            modifier = Modifier.fillMaxWidth(),
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF00B0FF),
+                focusedLabelColor = Color(0xFF00B0FF)
+            )
         )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(text = { Text("All") }, onClick = { onSelect(null); expanded = false })
+        // Transparent overlay box to capture taps reliably across the entire text field area
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clickable { expanded = true }
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth(0.7f)
+        ) {
+            DropdownMenuItem(
+                text = { Text("All", fontWeight = if (selected == null) FontWeight.Bold else FontWeight.Normal) },
+                onClick = { onSelect(null); expanded = false }
+            )
             items.forEach { item ->
-                DropdownMenuItem(text = { Text(item) }, onClick = { onSelect(item); expanded = false })
+                DropdownMenuItem(
+                    text = { Text(item, fontWeight = if (selected == item) FontWeight.Bold else FontWeight.Normal) },
+                    onClick = { onSelect(item); expanded = false }
+                )
             }
         }
     }

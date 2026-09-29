@@ -148,12 +148,15 @@ fun formatTransactionAmount(amount: Double, type: String, isIncomingTransfer: Bo
     val absAmount = kotlin.math.abs(amount)
     val formattedValue = formatter.format(absAmount).replace("₹", "").trim()
     
-    return when {
-        type == "Income" || isIncomingTransfer -> "+$formattedValue"
-        type == "Expense" || type == "Transfer" -> "−$formattedValue"
-        amount >= 0 -> "+$formattedValue"
-        else -> "−$formattedValue"
+    val isPositive = when {
+        isIncomingTransfer -> true
+        type == "Income" -> amount >= 0
+        type == "Expense" -> false
+        type == "Transfer" -> false
+        else -> amount >= 0
     }
+
+    return if (isPositive) "+$formattedValue" else "−$formattedValue"
 }
 
 fun getOffsetWeekRange(offset: Int): Pair<LocalDate, LocalDate> {

@@ -10,9 +10,9 @@ class ExpenseSummaryCalculatorTest {
     @Test
     fun currentBalance_calculatesCorrectly() {
         val expenses = listOf(
-            createExpense("01-01-2024", 100.0),
-            createExpense("02-01-2024", -50.0),
-            createExpense("03-01-2024", 25.0)
+            createExpense("01-01-2024", 100.0, transactionType = "Income"),
+            createExpense("02-01-2024", -50.0, transactionType = "Expense"),
+            createExpense("03-01-2024", 25.0, transactionType = "Income")
         )
         val balance = ExpenseSummaryCalculator.currentBalance(expenses)
         assertEquals(75.0, balance, 0.01)

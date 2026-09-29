@@ -42,6 +42,7 @@ fun BackupRestoreScreen(
 
     var showBackupDialog by remember { mutableStateOf(false) }
     var showForceReplaceDialog by remember { mutableStateOf(false) }
+    var showRestoreSafetyBackupDialog by remember { mutableStateOf(false) }
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
@@ -176,6 +177,17 @@ fun BackupRestoreScreen(
                 ) {
                     Text("BROWSE & RESTORE FILE")
                 }
+
+                if (viewModel.hasPreRestoreSafetyBackup()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = { showRestoreSafetyBackupDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Text("RESTORE PREVIOUS LOCAL DATA")
+                    }
+                }
             }
             
             if (selectedTabIndex == 1) {
@@ -283,6 +295,31 @@ fun BackupRestoreScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showForceReplaceDialog = false }) {
+                        Text("CANCEL")
+                    }
+                }
+            )
+        }
+
+        if (showRestoreSafetyBackupDialog) {
+            AlertDialog(
+                onDismissRequest = { showRestoreSafetyBackupDialog = false },
+                title = { Text("Restore Local Safety Backup") },
+                text = { Text("This will restore your transactions and accounts from the safety backup snapshot taken before the last restore. Are you sure?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showRestoreSafetyBackupDialog = false
+                            viewModel.restorePreRestoreSafetyBackup { msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    ) {
+                        Text("RESTORE")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRestoreSafetyBackupDialog = false }) {
                         Text("CANCEL")
                     }
                 }

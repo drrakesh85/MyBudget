@@ -103,6 +103,132 @@ class SyncManager(
     }
 
     /**
+     * Validates cloud/remote SyncData payload before any modification to local storage.
+     * Throws an exception if schema version is invalid, expenses are invalid/cannot convert,
+     * or accounts are invalid.
+     */
+    fun validateRemoteSyncData(remoteData: SyncData): SyncData {
+        if (remoteData.schemaVersion < 1) {
+            throw Exception("Invalid backup file: unsupported schema version (${remoteData.schemaVersion})")
+        }
+
+        for (expense in remoteData.expenses) {
+            if (!validateExpense(expense)) {
+                throw Exception("Invalid expense record in remote data: rowId=${expense.rowId}")
+            }
+            try {
+                expense.toEntity()
+            } catch (e: Exception) {
+                throw Exception("Expense conversion to ExpenseEntity failed for rowId ${expense.rowId}: ${e.message}", e)
+            }
+        }
+
+        val sanitizedAccounts = try {
+            remoteData.accounts.map { sanitizeAccount(it) }
+        } catch (e: Exception) {
+            throw Exception("Invalid account record in remote data: ${e.message}", e)
+        }
+
+        return remoteData.copy(
+            expenses = remoteData.expenses.filter { validateExpense(it) },
+            accounts = sanitizedAccounts
+        )
+    }
+
+    /**
+     * Performs a deterministic Full Replacement Restore of local database and account preferences.
+     * Overwrites local expenses and account list with the validated remote dataset.
+     */
+    suspend fun fullReplaceData(remoteData: SyncData): SyncData = syncLock.withLock {
+        Log.i(TAG, "Starting Full Replacement Restore. Remote transactions: ${remoteData.expenses.size}, Remote accounts: ${remoteData.accounts.size}")
+
+        // 1. Validate remote SyncData FIRST before touching local storage
+        val validatedRemoteData = validateRemoteSyncData(remoteData)
+        val validExpenses = validatedRemoteData.expenses
+        val sanitizedAccounts = validatedRemoteData.accounts
+
+        // 2. Create complete local safety backup before destructive replacement
+        val currentLocalExpenses = repository.getAllForSync()
+        val currentLocalAccounts = accountRepository.accounts.value
+        val localSafetyBackup = SyncData(
+            schemaVersion = 3,
+            lastSyncTimestamp = System.currentTimeMillis(),
+            expenses = currentLocalExpenses,
+            accounts = currentLocalAccounts
+        )
+
+        val gson = com.google.gson.GsonBuilder()
+            .registerTypeAdapter(Account::class.java, AccountAdapter())
+            .create()
+        val safetyBackupJson = gson.toJson(localSafetyBackup)
+        accountRepository.savePreRestoreFullSafetyBackupJson(safetyBackupJson)
+
+        // 3. Perform full replacement with explicit rollback protection
+        try {
+            repository.fullReplaceSyncData(validExpenses)
+            accountRepository.replaceAccountsList(sanitizedAccounts)
+
+            Log.i(TAG, "Full Replacement Restore complete. Restored ${validExpenses.size} expenses and ${sanitizedAccounts.size} accounts.")
+
+            return SyncData(
+                schemaVersion = remoteData.schemaVersion,
+                lastSyncTimestamp = System.currentTimeMillis(),
+                expenses = validExpenses,
+                accounts = sanitizedAccounts
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Full restore failed; attempting automatic rollback to local safety backup", e)
+            val rollbackSuccess = try {
+                repository.fullReplaceSyncData(localSafetyBackup.expenses)
+                accountRepository.replaceAccountsList(localSafetyBackup.accounts)
+                true
+            } catch (rollbackError: Exception) {
+                Log.e(TAG, "CRITICAL: Automatic rollback failed", rollbackError)
+                false
+            }
+
+            if (rollbackSuccess) {
+                throw Exception("Full restore failed; local database was automatically restored from safety backup: ${e.message}", e)
+            } else {
+                throw Exception("CRITICAL: Full restore failed AND automatic rollback failed. Local safety backup remains available for manual recovery: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Manually restores the pre-restore full safety backup snapshot.
+     */
+    suspend fun restorePreRestoreSafetyBackup(): SyncData = syncLock.withLock {
+        val backupJson = accountRepository.getPreRestoreFullSafetyBackupJson()
+            ?: throw Exception("No pre-restore safety backup found")
+
+        val gson = com.google.gson.GsonBuilder()
+            .registerTypeAdapter(Account::class.java, AccountAdapter())
+            .create()
+
+        val backupData = try {
+            gson.fromJson(backupJson, SyncData::class.java)
+                ?: throw Exception("Corrupted pre-restore safety backup")
+        } catch (e: Exception) {
+            throw Exception("Failed to deserialize pre-restore safety backup: ${e.message}", e)
+        }
+
+        val validatedBackup = validateRemoteSyncData(backupData)
+
+        repository.fullReplaceSyncData(validatedBackup.expenses)
+        accountRepository.replaceAccountsList(validatedBackup.accounts)
+
+        Log.i(TAG, "Pre-restore safety backup restored successfully (${validatedBackup.expenses.size} expenses, ${validatedBackup.accounts.size} accounts)")
+
+        return SyncData(
+            schemaVersion = validatedBackup.schemaVersion,
+            lastSyncTimestamp = System.currentTimeMillis(),
+            expenses = validatedBackup.expenses,
+            accounts = validatedBackup.accounts
+        )
+    }
+
+    /**
      * Identifies whether two records with different rowIds but identical fingerprints 
      * should be collapsed into one.
      */

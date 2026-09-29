@@ -118,9 +118,30 @@ interface ExpenseDao {
     @Query("UPDATE expenses SET account = :newName WHERE account = :oldName")
     suspend fun renameAccount(oldName: String, newName: String)
 
+    @Query("SELECT DISTINCT payeePayer FROM expenses WHERE payeePayer != '' AND isDeleted = 0 ORDER BY payeePayer ASC")
+    suspend fun getDistinctPayees(): List<String>
+
+    @Query("SELECT DISTINCT category FROM expenses WHERE category != '' AND isDeleted = 0 ORDER BY category ASC")
+    suspend fun getDistinctCategories(): List<String>
+
+    @Query("SELECT DISTINCT subcategory FROM expenses WHERE subcategory != '' AND isDeleted = 0 ORDER BY subcategory ASC")
+    suspend fun getDistinctSubcategories(): List<String>
+
+    @Query("SELECT DISTINCT subcategory FROM expenses WHERE subcategory != '' AND category = :category AND isDeleted = 0 ORDER BY subcategory ASC")
+    suspend fun getDistinctSubcategoriesForCategory(category: String): List<String>
+
     @Query("SELECT * FROM expenses")
     suspend fun getAllForSync(): List<ExpenseEntity>
 
     @Query("DELETE FROM expenses WHERE status != 'system'")
     suspend fun deleteRealTransactions()
+
+    @Query("DELETE FROM expenses")
+    suspend fun deleteAll()
+
+    @androidx.room.Transaction
+    suspend fun fullReplace(expenses: List<ExpenseEntity>) {
+        deleteAll()
+        insertAll(expenses)
+    }
 }

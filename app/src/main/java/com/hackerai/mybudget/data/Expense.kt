@@ -32,6 +32,14 @@ data class Expense(
     val dateMillis: Long = 0L // Pre-calculated for performance
 ) {
     /**
+     * Returns dateMillis if valid (> 0), otherwise derives it from stored date string.
+     */
+    fun getOrDeriveDateMillis(): Long {
+        if (dateMillis > 0L) return dateMillis
+        return DateUtils.parseDateToMillis(date)
+    }
+
+    /**
      * Generates a deterministic identity for a transaction based on its core properties.
      * Forced to Locale.US to ensure decimal consistency across different device locales.
      */
@@ -54,29 +62,33 @@ data class Expense(
         private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
         private val zoneId = ZoneId.systemDefault()
         
-        fun createEmpty() = Expense(
-            date = LocalDate.now(zoneId).format(dateFormatter),
-            time = java.time.LocalTime.now(zoneId).format(timeFormatter),
-            amount = 0.0,
-            category = "",
-            subcategory = "",
-            paymentMethod = "",
-            description = "",
-            refCheckNo = "",
-            payeePayer = "",
-            status = "",
-            receiptPicture = "",
-            account = "",
-            tag = "",
-            tax = "",
-            quantity = 1.0,
-            unit = "PCS",
-            splitTotal = "",
-            rowId = "new_${java.util.UUID.randomUUID()}",
-            typeId = "",
-            transactionType = "Expense",
-            lastModified = System.currentTimeMillis(),
-            isDeleted = false
-        )
+        fun createEmpty(): Expense {
+            val dateStr = LocalDate.now(zoneId).format(dateFormatter)
+            return Expense(
+                date = dateStr,
+                time = java.time.LocalTime.now(zoneId).format(timeFormatter),
+                amount = 0.0,
+                category = "",
+                subcategory = "",
+                paymentMethod = "",
+                description = "",
+                refCheckNo = "",
+                payeePayer = "",
+                status = "",
+                receiptPicture = "",
+                account = "",
+                tag = "",
+                tax = "",
+                quantity = 1.0,
+                unit = "PCS",
+                splitTotal = "",
+                rowId = "new_${java.util.UUID.randomUUID()}",
+                typeId = "",
+                transactionType = "Expense",
+                lastModified = System.currentTimeMillis(),
+                isDeleted = false,
+                dateMillis = DateUtils.parseDateToMillis(dateStr)
+            )
+        }
     }
 }

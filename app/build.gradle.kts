@@ -19,6 +19,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
+
     buildTypes {
         release {
             optimization {
@@ -71,6 +77,11 @@ dependencies {
     // Dropbox Sync
     implementation(libs.dropbox.core.sdk)
     implementation(libs.dropbox.android.sdk)
+
+    // Networking & Background Tasks
+    implementation(libs.okhttp)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.nanohttpd)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

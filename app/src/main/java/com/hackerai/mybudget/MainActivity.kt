@@ -27,8 +27,11 @@ import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
 enum class Screen {
-    EXPENSE_LIST, TRANSACTION_BROWSER, CATEGORY_SUMMARY, CALENDAR_VIEW, ACCOUNT_SUMMARY, SETTINGS, CATEGORY_SETTINGS, TAG_SETTINGS, SMS_IMPORT, ACCOUNT_LIST, AUDIT, BACKUP_RESTORE, CATEGORY_TRANSACTIONS
+    EXPENSE_LIST, TRANSACTION_BROWSER, CATEGORY_SUMMARY, CALENDAR_VIEW, ACCOUNT_SUMMARY, SETTINGS, CATEGORY_SETTINGS, TAG_SETTINGS, SMS_IMPORT, ACCOUNT_LIST, AUDIT, BACKUP_RESTORE, CATEGORY_TRANSACTIONS, CLOUD_BACKUP, PC_BROWSER_ACCESS
 }
 
 class MainActivity : ComponentActivity() {
@@ -293,23 +296,13 @@ class MainActivity : ComponentActivity() {
                             Screen.SETTINGS -> {
                                 SettingsScreen(
                                     onBack = { navigateBack() },
+                                    onNavigateToCloudBackup = { navigateTo(Screen.CLOUD_BACKUP) },
                                     onNavigateToCategorySettings = { navigateTo(Screen.CATEGORY_SETTINGS) },
                                     onNavigateToTagSettings = { navigateTo(Screen.TAG_SETTINGS) },
                                     onNavigateToAudit = { navigateTo(Screen.AUDIT) },
                                     onNavigateToAccountManagement = { navigateTo(Screen.ACCOUNT_LIST) },
                                     onNavigateToBackupRestore = { navigateTo(Screen.BACKUP_RESTORE) },
-                                    onGoogleDriveSync = {
-                                        val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
-                                        if (lastAccount != null) {
-                                            startGoogleDriveSync(lastAccount)
-                                        } else {
-                                            val client = expenseViewModel.getGoogleSignInClient()
-                                            googleSignInLauncher.launch(client.signInIntent)
-                                        }
-                                    },
-                                    onDropboxSync = {
-                                        expenseViewModel.startDropboxSync()
-                                    },
+                                    onNavigateToPcBrowserAccess = { navigateTo(Screen.PC_BROWSER_ACCESS) },
                                     onExportCsv = {
                                         exportData(expenseViewModel, "my_budget_export.csv", "text/csv")
                                     },
@@ -322,6 +315,33 @@ class MainActivity : ComponentActivity() {
                                     onImportExcel = {
                                         excelImportLauncher.launch(arrayOf("application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                                     },
+                                    expenseViewModel = expenseViewModel
+                                )
+                            }
+                            Screen.PC_BROWSER_ACCESS -> {
+                                PcBrowserAccessScreen(
+                                    onBack = { navigateBack() }
+                                )
+                            }
+                            Screen.CLOUD_BACKUP -> {
+                                val isGoogleConnected by expenseViewModel.isGoogleDriveConnected.collectAsState()
+                                val isDropboxConnected by expenseViewModel.isDropboxConnected.collectAsState()
+                                CloudBackupScreen(
+                                    onBack = { navigateBack() },
+                                    onGoogleDriveSync = {
+                                        val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
+                                        if (lastAccount != null) {
+                                            startGoogleDriveSync(lastAccount)
+                                        } else {
+                                            val client = expenseViewModel.getGoogleSignInClient()
+                                            googleSignInLauncher.launch(client.signInIntent)
+                                        }
+                                    },
+                                    onDropboxSync = {
+                                        expenseViewModel.startDropboxSync()
+                                    },
+                                    isGoogleDriveConnected = isGoogleConnected,
+                                    isDropboxConnected = isDropboxConnected,
                                     expenseViewModel = expenseViewModel
                                 )
                             }
@@ -342,6 +362,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             Screen.SMS_IMPORT -> {
+                                val currentSelectedAccount by expenseViewModel.selectedAccount.collectAsState()
                                 SmsImportScreen(
                                     onBack = { navigateBack() },
                                     onReviewTransaction = { expense ->
@@ -351,7 +372,7 @@ class MainActivity : ComponentActivity() {
                                         // The ReviewExpenseScreen is an overlay that will show because editingExpense is set.
                                         // When it's finished, we'll still be on SMS_IMPORT.
                                     },
-                                    accountFilter = expenseViewModel.selectedAccount.value
+                                    accountFilter = currentSelectedAccount
                                 )
                             }
                             Screen.ACCOUNT_LIST -> {
@@ -390,7 +411,7 @@ class MainActivity : ComponentActivity() {
             if (resultCode == Activity.RESULT_OK) {
                 GoogleSignIn.getLastSignedInAccount(this)?.let { account ->
                     if (::expenseViewModel.isInitialized) {
-                        startGoogleDriveSync(account)
+                        expenseViewModel.refreshGoogleDriveConnection()
                     }
                 }
             } else {
@@ -411,8 +432,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         expenseViewModel.refreshGoogleDriveConnection()
-        expenseViewModel.syncWithGoogle(account)
-        Toast.makeText(this, "Syncing with Google Drive...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Google Drive connected.", Toast.LENGTH_SHORT).show()
     }
 
     private fun checkSmsPermissions() {

@@ -33,6 +33,27 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     private val dropboxHelper = DropboxHelper(application)
     private val gson = com.google.gson.Gson()
 
+    val backupManager = (application as MyBudgetApplication).backupManager
+    val autoBackupPrefs = AutoBackupPreferences(application)
+
+    private val _googleDriveAutoBackupEnabled = MutableStateFlow(autoBackupPrefs.googleDriveEnabled)
+    val googleDriveAutoBackupEnabled: StateFlow<Boolean> = _googleDriveAutoBackupEnabled.asStateFlow()
+
+    private val _googleDriveBackupInterval = MutableStateFlow(autoBackupPrefs.googleDriveIntervalMinutes)
+    val googleDriveBackupInterval: StateFlow<Int> = _googleDriveBackupInterval.asStateFlow()
+
+    private val _googleDriveLastBackupTimestamp = MutableStateFlow(autoBackupPrefs.googleDriveLastBackupTimestamp)
+    val googleDriveLastBackupTimestamp: StateFlow<Long> = _googleDriveLastBackupTimestamp.asStateFlow()
+
+    private val _dropboxAutoBackupEnabled = MutableStateFlow(autoBackupPrefs.dropboxEnabled)
+    val dropboxAutoBackupEnabled: StateFlow<Boolean> = _dropboxAutoBackupEnabled.asStateFlow()
+
+    private val _dropboxBackupInterval = MutableStateFlow(autoBackupPrefs.dropboxIntervalMinutes)
+    val dropboxBackupInterval: StateFlow<Int> = _dropboxBackupInterval.asStateFlow()
+
+    private val _dropboxLastBackupTimestamp = MutableStateFlow(autoBackupPrefs.dropboxLastBackupTimestamp)
+    val dropboxLastBackupTimestamp: StateFlow<Long> = _dropboxLastBackupTimestamp.asStateFlow()
+
     private val _uiState = MutableStateFlow<BudgetUiState>(BudgetUiState.Loading)
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
 
@@ -103,6 +124,9 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
 
     private val _editingExpense = MutableStateFlow<Expense?>(null)
     val editingExpense: StateFlow<Expense?> = _editingExpense.asStateFlow()
+
+    private val _csvDiagnosticResult = MutableStateFlow<CsvImportDiagnosticResult?>(null)
+    val csvDiagnosticResult: StateFlow<CsvImportDiagnosticResult?> = _csvDiagnosticResult.asStateFlow()
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val accountExpenses: StateFlow<List<Expense>> = _selectedAccount
@@ -185,6 +209,32 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.value = BudgetUiState.Error(result.errorMessage ?: "Failed to import CSV")
             }
         }
+    }
+
+    fun runCsvImportDryRun(uri: android.net.Uri) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            _uiState.value = BudgetUiState.Loading
+            try {
+                (getApplication() as android.content.Context).contentResolver.openInputStream(uri).use { stream ->
+                    if (stream != null) {
+                        val result = CsvImportDiagnosticTool.runDiagnostic(stream)
+                        _csvDiagnosticResult.value = result
+                        _uiState.value = BudgetUiState.Success(
+                            (uiState.value as? BudgetUiState.Success)?.expenses ?: emptyList(),
+                            (uiState.value as? BudgetUiState.Success)?.pendingSms ?: emptyList()
+                        )
+                    } else {
+                        _uiState.value = BudgetUiState.Error("Failed to open input stream for diagnostic")
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.value = BudgetUiState.Error("Diagnostic failed: ${e.message}")
+            }
+        }
+    }
+
+    fun clearCsvDiagnosticResult() {
+        _csvDiagnosticResult.value = null
     }
 
     fun loadExpenses() {
@@ -463,6 +513,97 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
 
     fun getLastSignedInGoogleAccount() = googleDriveHelper.getLastSignedInAccount()
 
+    fun setGoogleDriveAutoBackupEnabled(enabled: Boolean) {
+        autoBackupPrefs.googleDriveEnabled = enabled
+        _googleDriveAutoBackupEnabled.value = enabled
+        if (enabled) {
+            AutoBackupPreferences.scheduleGoogleDriveBackup(getApplication())
+        } else {
+            AutoBackupPreferences.cancelGoogleDriveBackup(getApplication())
+        }
+    }
+
+    fun setGoogleDriveBackupInterval(intervalMinutes: Int) {
+        autoBackupPrefs.googleDriveIntervalMinutes = intervalMinutes
+        _googleDriveBackupInterval.value = intervalMinutes
+        if (autoBackupPrefs.googleDriveEnabled) {
+            AutoBackupPreferences.scheduleGoogleDriveBackup(getApplication())
+        }
+    }
+
+    fun setDropboxAutoBackupEnabled(enabled: Boolean) {
+        autoBackupPrefs.dropboxEnabled = enabled
+        _dropboxAutoBackupEnabled.value = enabled
+        if (enabled) {
+            AutoBackupPreferences.scheduleDropboxBackup(getApplication())
+        } else {
+            AutoBackupPreferences.cancelDropboxBackup(getApplication())
+        }
+    }
+
+    fun setDropboxBackupInterval(intervalMinutes: Int) {
+        autoBackupPrefs.dropboxIntervalMinutes = intervalMinutes
+        _dropboxBackupInterval.value = intervalMinutes
+        if (autoBackupPrefs.dropboxEnabled) {
+            AutoBackupPreferences.scheduleDropboxBackup(getApplication())
+        }
+    }
+
+    fun refreshAutoBackupTimestamps() {
+        _googleDriveLastBackupTimestamp.value = autoBackupPrefs.googleDriveLastBackupTimestamp
+        _dropboxLastBackupTimestamp.value = autoBackupPrefs.dropboxLastBackupTimestamp
+    }
+
+    fun backupToGoogleDrive(account: GoogleSignInAccount, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val msg = backupManager.backupToGoogleDrive(account)
+                autoBackupPrefs.googleDriveLastBackupTimestamp = System.currentTimeMillis()
+                refreshAutoBackupTimestamps()
+                onResult(msg)
+            } catch (e: Exception) {
+                onResult("Google Drive backup failed: ${e.message}")
+            }
+        }
+    }
+
+    fun restoreFromGoogleDrive(account: GoogleSignInAccount, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val data = backupManager.restoreFromGoogleDrive(account)
+                loadExpenses()
+                onResult("Restored ${data.expenses.size} expenses from Google Drive")
+            } catch (e: Exception) {
+                onResult("Google Drive restore failed: ${e.message}")
+            }
+        }
+    }
+
+    fun backupToDropbox(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val msg = backupManager.backupToDropbox()
+                autoBackupPrefs.dropboxLastBackupTimestamp = System.currentTimeMillis()
+                refreshAutoBackupTimestamps()
+                onResult(msg)
+            } catch (e: Exception) {
+                onResult("Dropbox backup failed: ${e.message}")
+            }
+        }
+    }
+
+    fun restoreFromDropbox(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val data = backupManager.restoreFromDropbox()
+                loadExpenses()
+                onResult("Restored ${data.expenses.size} expenses from Dropbox")
+            } catch (e: Exception) {
+                onResult("Dropbox restore failed: ${e.message}")
+            }
+        }
+    }
+
     fun hasGoogleDrivePermission(account: GoogleSignInAccount) = googleDriveHelper.hasDrivePermission(account)
 
     fun refreshGoogleDriveConnection() {
@@ -476,7 +617,6 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     fun handleDropboxAuth() {
         if (dropboxHelper.handleAuthResponse()) {
             _isDropboxConnected.value = true
-            syncWithDropbox()
         }
     }
 
@@ -541,7 +681,8 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 if (syncData.expenses.isNotEmpty() || syncData.accounts.isNotEmpty()) {
-                    syncManager.mergeSyncData(syncData)
+                    syncManager.fullReplaceData(syncData)
+                    loadExpenses()
                     onComplete()
                 }
             } catch (e: Exception) {
@@ -550,47 +691,65 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun hasPreRestoreSafetyBackup(): Boolean {
+        return accountRepository.hasPreRestoreFullSafetyBackup()
+    }
+
+    fun restorePreRestoreSafetyBackup(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val data = syncManager.restorePreRestoreSafetyBackup()
+                loadExpenses()
+                onResult("Restored ${data.expenses.size} expenses and ${data.accounts.size} accounts from safety backup")
+            } catch (e: Exception) {
+                onResult("Safety backup restore failed: ${e.message}")
+            }
+        }
+    }
+
     fun exportAppData(categories: Boolean, subcategories: Boolean, tags: Boolean, payers: Boolean, payees: Boolean, accounts: Boolean, onResult: (String) -> Unit) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             val sb = StringBuilder()
             // Standardizing on 14 columns to avoid mismatches
-            // Type, Val1, Val2, Val3, Val4, Val5, Val6, Val7, Val8, Val9, Val10, Val11, Val12, Val13
             sb.append("Type,Value1,Value2,Value3,Value4,Value5,Value6,Value7,Value8,Value9,Value10,Value11,Value12,Value13\n")
             
+            // Helper for maximum null-safety against legacy/GSON corrupted data
+            fun Any?.csvEntry(): String {
+                val str = if (this == null) "" else this.toString()
+                return "\"${str.replace("\"", "\"\"")}\""
+            }
+
             if (categories) {
                 _categorySubcategoryMap.value.forEach { (cat, subs) ->
-                    val safeCat = (cat ?: "").replace("\"", "\"\"")
+                    val safeCat = cat.csvEntry()
                     if (!subcategories || subs.isEmpty()) {
-                        sb.append("CATEGORY,\"$safeCat\",\"\",\"Expense\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n")
+                        sb.append("CATEGORY,$safeCat,\"\",\"Expense\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n")
                     } else {
                         subs.forEach { sub ->
-                            val safeSub = (sub ?: "").replace("\"", "\"\"")
-                            sb.append("CATEGORY,\"$safeCat\",\"$safeSub\",\"Expense\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n")
+                            val safeSub = sub.csvEntry()
+                            sb.append("CATEGORY,$safeCat,$safeSub,\"Expense\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n")
                         }
                     }
                 }
             }
             if (tags) {
                 _tags.value.forEach { 
-                    val safeTag = (it ?: "").replace("\"", "\"\"")
-                    sb.append("TAG,\"$safeTag\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
+                    sb.append("TAG,${it.csvEntry()},\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
                 }
             }
             if (payees) {
                 _payees.value.forEach { 
-                    val safePayee = (it ?: "").replace("\"", "\"\"")
-                    sb.append("PAYEE,\"$safePayee\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
+                    sb.append("PAYEE,${it.csvEntry()},\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
                 }
             }
             if (payers) {
                 _payees.value.forEach { 
-                    val safePayer = (it ?: "").replace("\"", "\"\"")
-                    sb.append("PAYER,\"$safePayer\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
+                    sb.append("PAYER,${it.csvEntry()},\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"\n") 
                 }
             }
             if (accounts) {
                 accountRepository.accounts.value.forEach { acc ->
-                    val type = acc.type.name
+                    val type = (acc.type as? AccountType)?.name ?: "SAVING"
                     val isHidden = if (acc.isHidden) "1" else "0"
                     val smsEnabled = if (acc.smsParsingEnabled) "1" else "0"
                     
@@ -600,11 +759,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                         is CreditCardAccount -> listOf(acc.nickName, type, acc.bankName, "", "", acc.cardNumber, acc.expiry, "", acc.billingDate.toString(), acc.dueDate.toString(), acc.smsSenderKeywords, smsEnabled, isHidden)
                         is CashAccount -> listOf(acc.nickName, type, "", "", "", "", "", "", "", "", acc.smsSenderKeywords, smsEnabled, isHidden)
                     }
-                    // Extremely defensive mapping to avoid NPE in replace
-                    val row = "ACCOUNT," + fields.joinToString(",") { item ->
-                        val safeItem = if (item == null) "" else item.toString()
-                        "\"${safeItem.replace("\"", "\"\"")}\""
-                    }
+                    val row = "ACCOUNT," + fields.joinToString(",") { it.csvEntry() }
                     sb.append(row).append("\n")
                 }
             }

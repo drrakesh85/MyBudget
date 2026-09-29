@@ -85,6 +85,47 @@ class AccountRepository(context: Context) {
         saveAccounts(newOrder)
     }
 
+    fun saveAccountsList(list: List<Account>) {
+        _accounts.value = list
+        saveAccounts(list)
+    }
+
+    fun replaceAccountsList(accounts: List<Account>) {
+        _accounts.value = accounts
+        saveAccounts(accounts)
+    }
+
+    fun getRawAccountsJson(): String? {
+        return prefs.getString(ACCOUNTS_KEY, null)
+    }
+
+    fun saveAccountsBackupJson(json: String) {
+        prefs.edit().putString(ACCOUNTS_BACKUP_KEY, json).apply()
+    }
+
+    fun getAccountsBackupJson(): String? {
+        return prefs.getString(ACCOUNTS_BACKUP_KEY, null)
+    }
+
+    fun restoreAccountsFromBackup(): Boolean {
+        val backupJson = getAccountsBackupJson() ?: return false
+        prefs.edit().putString(ACCOUNTS_KEY, backupJson).apply()
+        loadAccounts()
+        return true
+    }
+
+    fun savePreRestoreFullSafetyBackupJson(json: String) {
+        prefs.edit().putString(FULL_RESTORE_SAFETY_BACKUP_KEY, json).apply()
+    }
+
+    fun getPreRestoreFullSafetyBackupJson(): String? {
+        return prefs.getString(FULL_RESTORE_SAFETY_BACKUP_KEY, null)
+    }
+
+    fun hasPreRestoreFullSafetyBackup(): Boolean {
+        return !getPreRestoreFullSafetyBackupJson().isNullOrBlank()
+    }
+
     private fun saveAccounts(list: List<Account>) {
         val json = gson.toJson(list)
         prefs.edit().putString(ACCOUNTS_KEY, json).apply()
@@ -98,6 +139,8 @@ class AccountRepository(context: Context) {
         private const val PREFS_NAME = "accounts_prefs_encrypted"
         private const val LEGACY_PREFS_NAME = "accounts_prefs"
         private const val ACCOUNTS_KEY = "accounts_list"
+        private const val ACCOUNTS_BACKUP_KEY = "accounts_list_backup_before_cleanup"
+        private const val FULL_RESTORE_SAFETY_BACKUP_KEY = "pre_restore_full_safety_backup_json"
     }
 }
 

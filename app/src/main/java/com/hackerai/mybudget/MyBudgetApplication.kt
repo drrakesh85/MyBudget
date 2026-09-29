@@ -1,9 +1,7 @@
 package com.hackerai.mybudget
 
 import android.app.Application
-import com.hackerai.mybudget.data.AccountRepository
-import com.hackerai.mybudget.data.AppDatabase
-import com.hackerai.mybudget.data.ExpenseRepository
+import com.hackerai.mybudget.data.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 
@@ -21,9 +19,26 @@ class MyBudgetApplication : Application() {
         AccountRepository(this)
     }
 
+    val syncManager: SyncManager by lazy {
+        SyncManager(expenseRepository, accountRepository)
+    }
+
+    val googleDriveHelper: GoogleDriveHelper by lazy {
+        GoogleDriveHelper(this)
+    }
+
+    val dropboxHelper: DropboxHelper by lazy {
+        DropboxHelper(this)
+    }
+
+    val backupManager: BackupManager by lazy {
+        BackupManager(this, expenseRepository, accountRepository, syncManager, googleDriveHelper, dropboxHelper)
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
+        AutoBackupPreferences.cancelAllAutoBackups(this)
     }
 
     companion object {

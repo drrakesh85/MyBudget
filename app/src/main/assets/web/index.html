@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyBudget — PC Browser Access</title>
+    <link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+    <!-- Main App Layout -->
+    <div id="appLayout" class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <span class="logo-icon">💰</span>
+                <span class="brand-title">MyBudget</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" onclick="switchNav('dashboard')">
+                    <span class="nav-icon">📊</span> Dashboard
+                </button>
+                <button class="nav-item" onclick="switchNav('accounts')">
+                    <span class="nav-icon">💳</span> Accounts
+                </button>
+                <button class="nav-item" onclick="switchNav('transactions')">
+                    <span class="nav-icon">📑</span> Transactions
+                </button>
+                <button class="nav-item" onclick="switchNav('categories')">
+                    <span class="nav-icon">🏷️</span> Categories
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header Bar -->
+            <header class="top-header">
+                <h1 id="pageTitle">Dashboard</h1>
+                <div class="header-right">
+                    <span id="connectionStatus" class="status-indicator">Connected to Phone</span>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <section id="viewDashboard" class="view-section active">
+                <div class="metrics-grid">
+                    <div class="metric-card primary">
+                        <h3>Net Worth</h3>
+                        <div id="netWorthVal" class="metric-value">₹ 0.00</div>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Total Accounts</h3>
+                        <div id="totalAccountsVal" class="metric-value">0</div>
+                    </div>
+                </div>
+
+                <h2 class="section-title">Period Summaries</h2>
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <h4>Today</h4>
+                        <div class="summary-row"><span>Income:</span> <span id="todayIncome" class="val-income">₹ 0.00</span></div>
+                        <div class="summary-row"><span>Expense:</span> <span id="todayExpense" class="val-expense">₹ 0.00</span></div>
+                        <div class="summary-row total"><span>Net:</span> <span id="todayNet">₹ 0.00</span></div>
+                    </div>
+                    <div class="summary-card">
+                        <h4>This Week</h4>
+                        <div class="summary-row"><span>Income:</span> <span id="weekIncome" class="val-income">₹ 0.00</span></div>
+                        <div class="summary-row"><span>Expense:</span> <span id="weekExpense" class="val-expense">₹ 0.00</span></div>
+                        <div class="summary-row total"><span>Net:</span> <span id="weekNet">₹ 0.00</span></div>
+                    </div>
+                    <div class="summary-card">
+                        <h4>This Month</h4>
+                        <div class="summary-row"><span>Income:</span> <span id="monthIncome" class="val-income">₹ 0.00</span></div>
+                        <div class="summary-row"><span>Expense:</span> <span id="monthExpense" class="val-expense">₹ 0.00</span></div>
+                        <div class="summary-row total"><span>Net:</span> <span id="monthNet">₹ 0.00</span></div>
+                    </div>
+                    <div class="summary-card">
+                        <h4>Year to Date</h4>
+                        <div class="summary-row"><span>Income:</span> <span id="yearIncome" class="val-income">₹ 0.00</span></div>
+                        <div class="summary-row"><span>Expense:</span> <span id="yearExpense" class="val-expense">₹ 0.00</span></div>
+                        <div class="summary-row total"><span>Net:</span> <span id="yearNet">₹ 0.00</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Accounts View -->
+            <section id="viewAccounts" class="view-section">
+                <div class="action-header">
+                    <h2>Accounts</h2>
+                    <button onclick="openAddAccountModal()" class="btn-primary-action">+ ADD ACCOUNT</button>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Account Name</th>
+                                <th>Type</th>
+                                <th>Balance</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="accountsTableBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Account Statement View -->
+            <section id="viewStatement" class="view-section">
+                <div class="statement-header">
+                    <button onclick="switchNav('accounts')" class="btn-secondary">← Back to Accounts</button>
+                    <div class="statement-title">
+                        <h2 id="stmtAccountName">Account Statement</h2>
+                        <span id="stmtAccountType" class="account-type-tag">SAVING</span>
+                    </div>
+                    <div class="statement-balance">
+                        <span>Current Balance:</span>
+                        <strong id="stmtBalanceVal">₹ 0.00</strong>
+                    </div>
+                </div>
+
+                <!-- Account Statement Multi-Select Filters Section -->
+                <div class="stmt-filter-card">
+                    <div class="multi-select-group">
+                        <!-- Type Popover -->
+                        <div class="popover-container" id="popoverStmtTypeContainer">
+                            <button type="button" class="popover-trigger" id="btnStmtTypeTrigger" data-popover="popoverStmtType">
+                                <span>Type: All</span> <span class="arrow">▾</span>
+                            </button>
+                            <div class="popover-panel" id="popoverStmtType">
+                                <div class="popover-header">
+                                    <strong>Types</strong>
+                                    <div class="popover-actions">
+                                        <button type="button" onclick="selectAllStmtPopoverItems('Type', event)">All</button>
+                                        <button type="button" onclick="clearStmtPopoverItems('Type', event)">Clear</button>
+                                    </div>
+                                </div>
+                                <div class="popover-list" id="listStmtTypeItems">
+                                    <label class="popover-option"><input type="checkbox" value="Expense" onchange="onStmtTypeFilterCheckboxChanged(this)"> <span>Expense</span></label>
+                                    <label class="popover-option"><input type="checkbox" value="Income" onchange="onStmtTypeFilterCheckboxChanged(this)"> <span>Income</span></label>
+                                    <label class="popover-option"><input type="checkbox" value="Transfer" onchange="onStmtTypeFilterCheckboxChanged(this)"> <span>Transfer</span></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Category Popover -->
+                        <div class="popover-container" id="popoverStmtCategoryContainer">
+                            <button type="button" class="popover-trigger" id="btnStmtCategoryTrigger" data-popover="popoverStmtCategory">
+                                <span>Category: All</span> <span class="arrow">▾</span>
+                            </button>
+                            <div class="popover-panel" id="popoverStmtCategory">
+                                <div class="popover-header">
+                                    <strong>Categories</strong>
+                                    <div class="popover-actions">
+                                        <button type="button" onclick="selectAllStmtPopoverItems('Category', event)">All</button>
+                                        <button type="button" onclick="clearStmtPopoverItems('Category', event)">Clear</button>
+                                    </div>
+                                </div>
+                                <div class="popover-search">
+                                    <input type="text" placeholder="Search categories..." oninput="filterStmtPopoverList('Category', this.value)">
+                                </div>
+                                <div class="popover-list" id="listStmtCategoryItems"></div>
+                            </div>
+                        </div>
+
+                        <!-- Subcategory Popover -->
+                        <div class="popover-container" id="popoverStmtSubcategoryContainer">
+                            <button type="button" class="popover-trigger" id="btnStmtSubcategoryTrigger" data-popover="popoverStmtSubcategory">
+                                <span>Subcategory: All</span> <span class="arrow">▾</span>
+                            </button>
+                            <div class="popover-panel" id="popoverStmtSubcategory">
+                                <div class="popover-header">
+                                    <strong>Subcategories</strong>
+                                    <div class="popover-actions">
+                                        <button type="button" onclick="selectAllStmtPopoverItems('Subcategory', event)">All</button>
+                                        <button type="button" onclick="clearStmtPopoverItems('Subcategory', event)">Clear</button>
+                                    </div>
+                                </div>
+                                <div class="popover-search">
+                                    <input type="text" placeholder="Search subcategories..." oninput="filterStmtPopoverList('Subcategory', this.value)">
+                                </div>
+                                <div class="popover-list" id="listStmtSubcategoryItems"></div>
+                            </div>
+                        </div>
+
+                        <!-- Payee Popover -->
+                        <div class="popover-container" id="popoverStmtPayeeContainer">
+                            <button type="button" class="popover-trigger" id="btnStmtPayeeTrigger" data-popover="popoverStmtPayee">
+                                <span>Payee / Payer: All</span> <span class="arrow">▾</span>
+                            </button>
+                            <div class="popover-panel" id="popoverStmtPayee">
+                                <div class="popover-header">
+                                    <strong>Payees</strong>
+                                    <div class="popover-actions">
+                                        <button type="button" onclick="selectAllStmtPopoverItems('Payee', event)">All</button>
+                                        <button type="button" onclick="clearStmtPopoverItems('Payee', event)">Clear</button>
+                                    </div>
+                                </div>
+                                <div class="popover-search">
+                                    <input type="text" placeholder="Search payees..." oninput="filterStmtPopoverList('Payee', this.value)">
+                                </div>
+                                <div class="popover-list" id="listStmtPayeeItems"></div>
+                            </div>
+                        </div>
+
+                        <button type="button" class="btn-clear-filters" id="btnClearAllStmtFilters" onclick="clearAllStmtFilters()">Clear Filters</button>
+                    </div>
+
+                    <!-- Active Filter Chips & Result Counter for Account Statement -->
+                    <div class="filter-status-bar" id="stmtFilterStatusBar">
+                        <div class="active-chips" id="stmtActiveChips"></div>
+                        <div class="result-count" id="stmtResultCountText"></div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description / Payee</th>
+                                <th>Category</th>
+                                <th>Subcategory</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Running Balance</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statementTableBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Transactions View -->
+            <section id="viewTransactions" class="view-section">
+                <div class="action-header">
+                    <div class="filter-toolbar">
+                        <div class="filter-search-box">
+                            <input type="text" id="txnSearchInput" placeholder="Search payee, description, category, tag..." oninput="onTxnFilterDebounced()">
+                        </div>
+
+                        <div class="multi-select-group">
+                            <!-- Type Popover -->
+                            <div class="popover-container" id="popoverTypeContainer">
+                                <button type="button" class="popover-trigger" id="btnTypeTrigger" data-popover="popoverType">
+                                    <span>Type: All</span> <span class="arrow">▾</span>
+                                </button>
+                                <div class="popover-panel" id="popoverType">
+                                    <div class="popover-header">
+                                        <strong>Types</strong>
+                                        <div class="popover-actions">
+                                            <button type="button" onclick="selectAllPopoverItems('Type', event)">All</button>
+                                            <button type="button" onclick="clearPopoverItems('Type', event)">Clear</button>
+                                        </div>
+                                    </div>
+                                    <div class="popover-list" id="listTypeItems">
+                                        <label class="popover-option"><input type="checkbox" value="Expense" onchange="onTypeFilterCheckboxChanged(this)"> <span>Expense</span></label>
+                                        <label class="popover-option"><input type="checkbox" value="Income" onchange="onTypeFilterCheckboxChanged(this)"> <span>Income</span></label>
+                                        <label class="popover-option"><input type="checkbox" value="Transfer" onchange="onTypeFilterCheckboxChanged(this)"> <span>Transfer</span></label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Account Popover -->
+                            <div class="popover-container" id="popoverAccountContainer">
+                                <button type="button" class="popover-trigger" id="btnAccountTrigger" data-popover="popoverAccount">
+                                    <span>Account: All</span> <span class="arrow">▾</span>
+                                </button>
+                                <div class="popover-panel" id="popoverAccount">
+                                    <div class="popover-header">
+                                        <strong>Accounts</strong>
+                                        <div class="popover-actions">
+                                            <button type="button" onclick="selectAllPopoverItems('Account', event)">All</button>
+                                            <button type="button" onclick="clearPopoverItems('Account', event)">Clear</button>
+                                        </div>
+                                    </div>
+                                    <div class="popover-search">
+                                        <input type="text" placeholder="Search accounts..." oninput="filterPopoverList('Account', this.value)">
+                                    </div>
+                                    <div class="popover-list" id="listAccountItems"></div>
+                                </div>
+                            </div>
+
+                            <!-- Category Popover -->
+                            <div class="popover-container" id="popoverCategoryContainer">
+                                <button type="button" class="popover-trigger" id="btnCategoryTrigger" data-popover="popoverCategory">
+                                    <span>Category: All</span> <span class="arrow">▾</span>
+                                </button>
+                                <div class="popover-panel" id="popoverCategory">
+                                    <div class="popover-header">
+                                        <strong>Categories</strong>
+                                        <div class="popover-actions">
+                                            <button type="button" onclick="selectAllPopoverItems('Category', event)">All</button>
+                                            <button type="button" onclick="clearPopoverItems('Category', event)">Clear</button>
+                                        </div>
+                                    </div>
+                                    <div class="popover-search">
+                                        <input type="text" placeholder="Search categories..." oninput="filterPopoverList('Category', this.value)">
+                                    </div>
+                                    <div class="popover-list" id="listCategoryItems"></div>
+                                </div>
+                            </div>
+
+                            <!-- Subcategory Popover -->
+                            <div class="popover-container" id="popoverSubcategoryContainer">
+                                <button type="button" class="popover-trigger" id="btnSubcategoryTrigger" data-popover="popoverSubcategory">
+                                    <span>Subcategory: All</span> <span class="arrow">▾</span>
+                                </button>
+                                <div class="popover-panel" id="popoverSubcategory">
+                                    <div class="popover-header">
+                                        <strong>Subcategories</strong>
+                                        <div class="popover-actions">
+                                            <button type="button" onclick="selectAllPopoverItems('Subcategory', event)">All</button>
+                                            <button type="button" onclick="clearPopoverItems('Subcategory', event)">Clear</button>
+                                        </div>
+                                    </div>
+                                    <div class="popover-search">
+                                        <input type="text" placeholder="Search subcategories..." oninput="filterPopoverList('Subcategory', this.value)">
+                                    </div>
+                                    <div class="popover-list" id="listSubcategoryItems"></div>
+                                </div>
+                            </div>
+
+                            <!-- Payee Popover -->
+                            <div class="popover-container" id="popoverPayeeContainer">
+                                <button type="button" class="popover-trigger" id="btnPayeeTrigger" data-popover="popoverPayee">
+                                    <span>Payee / Payer: All</span> <span class="arrow">▾</span>
+                                </button>
+                                <div class="popover-panel" id="popoverPayee">
+                                    <div class="popover-header">
+                                        <strong>Payees</strong>
+                                        <div class="popover-actions">
+                                            <button type="button" onclick="selectAllPopoverItems('Payee', event)">All</button>
+                                            <button type="button" onclick="clearPopoverItems('Payee', event)">Clear</button>
+                                        </div>
+                                    </div>
+                                    <div class="popover-search">
+                                        <input type="text" placeholder="Search payees..." oninput="filterPopoverList('Payee', this.value)">
+                                    </div>
+                                    <div class="popover-list" id="listPayeeItems"></div>
+                                </div>
+                            </div>
+
+                            <button type="button" class="btn-clear-filters" id="btnClearAllFilters" onclick="clearAllFilters()">Clear All</button>
+                        </div>
+                    </div>
+                    <button onclick="openAddTxnModal()" class="btn-primary-action">+ ADD TRANSACTION</button>
+                </div>
+
+                <!-- Active Filter Chips & Result Counter -->
+                <div class="filter-status-bar" id="filterStatusBar">
+                    <div class="active-chips" id="activeChips"></div>
+                    <div class="result-count" id="resultCountText"></div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description / Payee</th>
+                                <th>Category</th>
+                                <th>Subcategory</th>
+                                <th>Account</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactionsTableBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pagination-bar">
+                    <button id="prevPageBtn" onclick="changeTxnPage(-1)" class="btn-secondary">Previous</button>
+                    <span id="pageInfo">Page 1 of 1</span>
+                    <button id="nextPageBtn" onclick="changeTxnPage(1)" class="btn-secondary">Next</button>
+                </div>
+            </section>
+
+            <!-- Categories View -->
+            <section id="viewCategories" class="view-section">
+                <div class="categories-grid" id="categoriesGrid">
+                    <!-- Populated dynamically -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal: Add / Edit Transaction -->
+    <div id="txnModal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modalTitle">Add Transaction</h3>
+                <button onclick="closeTxnModal()" class="btn-close">&times;</button>
+            </div>
+            <form id="txnForm" onsubmit="handleSaveTxn(event)">
+                <input type="hidden" id="formRowId">
+                <div class="form-row">
+                    <label>Type:</label>
+                    <div class="type-selector">
+                        <label class="type-option">
+                            <input type="radio" name="formType" value="Expense" checked onchange="onFormTypeChange()"> Expense
+                        </label>
+                        <label class="type-option">
+                            <input type="radio" name="formType" value="Income" onchange="onFormTypeChange()"> Income
+                        </label>
+                        <label class="type-option">
+                            <input type="radio" name="formType" value="Transfer" onchange="onFormTypeChange()"> Transfer
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="formAmount">Amount (₹) *</label>
+                        <input type="number" id="formAmount" step="0.01" min="0.01" placeholder="0.00" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="formDate">Date *</label>
+                        <input type="text" id="formDate" placeholder="dd-MM-yyyy" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="formTime">Time</label>
+                        <input type="text" id="formTime" placeholder="HH:mm">
+                    </div>
+                    <div class="form-group">
+                        <label for="formAccount" id="lblFormAccount">Account *</label>
+                        <select id="formAccount" required>
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="form-group" id="formToAccountGroup" style="display: none;">
+                        <label for="formToAccount">To Account *</label>
+                        <select id="formToAccount">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="formCategory">Category *</label>
+                        <input type="text" id="formCategory" placeholder="e.g. Food, Salary, Household" required list="categoryDatalist">
+                        <datalist id="categoryDatalist"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label for="formSubcategory">Subcategory</label>
+                        <input type="text" id="formSubcategory" placeholder="e.g. Groceries, Restaurants">
+                    </div>
+                    <div class="form-group">
+                        <label for="formPayeePayer">Payee / Payer</label>
+                        <div class="autocomplete-container">
+                            <input type="text" id="formPayeePayer" placeholder="Merchant or Payee name" autocomplete="off" oninput="onPayeeInputChanged()" onkeydown="handlePayeeKeydown(event)">
+                            <div id="payeeSuggestions" class="suggestions-dropdown" style="display: none;"></div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="formPaymentMethod">Payment Method</label>
+                        <input type="text" id="formPaymentMethod" placeholder="e.g. UPI, Card, Cash">
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="formDescription">Description</label>
+                        <input type="text" id="formDescription" placeholder="Notes or remarks">
+                    </div>
+                    <div class="form-group">
+                        <label for="formRefCheckNo">Reference / Check No</label>
+                        <input type="text" id="formRefCheckNo" placeholder="UPI Ref / Txn ID">
+                    </div>
+                    <div class="form-group">
+                        <label for="formTag">Tag</label>
+                        <input type="text" id="formTag" placeholder="e.g. Vacation, Office">
+                    </div>
+                </div>
+
+                <div id="formError" class="error-msg"></div>
+
+                <div class="modal-footer">
+                    <button type="button" onclick="closeTxnModal()" class="btn-secondary">Cancel</button>
+                    <button type="submit" id="saveTxnBtn" class="btn-primary-action">SAVE TRANSACTION</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: View Details -->
+    <div id="viewModal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Transaction Details</h3>
+                <button onclick="closeViewModal()" class="btn-close">&times;</button>
+            </div>
+            <div id="viewDetailsContent" class="details-content">
+                <!-- Populated dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeViewModal()" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Add / Edit Account -->
+    <div id="accountModal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="accountModalTitle">Add Account</h3>
+                <button onclick="closeAccountModal()" class="btn-close">&times;</button>
+            </div>
+            <form id="accountForm" onsubmit="handleSaveAccount(event)">
+                <input type="hidden" id="accountFormId">
+                <input type="hidden" id="accountFormOldNickName">
+
+                <div class="form-group full-width">
+                    <label for="accountFormType">Account Type *</label>
+                    <select id="accountFormType" required onchange="onAccountTypeChange()">
+                        <option value="SAVING">Saving Account</option>
+                        <option value="LOAN">Loan Account</option>
+                        <option value="CREDIT_CARD">Credit Card</option>
+                        <option value="CASH">Cash Account</option>
+                    </select>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="accountFormNickName">Account Nickname *</label>
+                        <input type="text" id="accountFormNickName" placeholder="e.g. HDFC Salary, Wallet, SBI Card" required>
+                    </div>
+
+                    <!-- Fields for SAVING, LOAN, CREDIT_CARD -->
+                    <div class="form-group" id="grpBankName">
+                        <label for="accountFormBankName">Bank Name</label>
+                        <input type="text" id="accountFormBankName" placeholder="e.g. HDFC Bank, SBI">
+                    </div>
+                    <div class="form-group" id="grpBranchName">
+                        <label for="accountFormBranchName">Branch Name</label>
+                        <input type="text" id="accountFormBranchName" placeholder="Branch name">
+                    </div>
+                    <div class="form-group" id="grpAccountNumber">
+                        <label for="accountFormAccountNumber">Account Number</label>
+                        <input type="text" id="accountFormAccountNumber" placeholder="Account Number">
+                    </div>
+
+                    <!-- Fields for CREDIT_CARD -->
+                    <div class="form-group" id="grpCardNumber" style="display: none;">
+                        <label for="accountFormCardNumber">Card Number</label>
+                        <input type="text" id="accountFormCardNumber" placeholder="Leave unchanged or enter new card number">
+                    </div>
+                    <div class="form-group" id="grpExpiry" style="display: none;">
+                        <label for="accountFormExpiry">Expiry (MM/YY)</label>
+                        <input type="text" id="accountFormExpiry" placeholder="12/28">
+                    </div>
+                    <div class="form-group" id="grpCvv" style="display: none;">
+                        <label for="accountFormCvv">CVV</label>
+                        <input type="password" id="accountFormCvv" maxlength="4" placeholder="Leave blank to keep existing CVV">
+                    </div>
+                    <div class="form-group" id="grpBillingDate" style="display: none;">
+                        <label for="accountFormBillingDate">Billing Date (Day of Month)</label>
+                        <input type="number" id="accountFormBillingDate" min="1" max="31" value="1">
+                    </div>
+                    <div class="form-group" id="grpDueDate" style="display: none;">
+                        <label for="accountFormDueDate">Due Date (Day of Month)</label>
+                        <input type="number" id="accountFormDueDate" min="1" max="31" value="1">
+                    </div>
+
+                    <!-- SMS Settings -->
+                    <div class="form-group full-width">
+                        <label for="accountFormSmsSender">SMS Sender Keywords</label>
+                        <input type="text" id="accountFormSmsSender" placeholder="e.g. HDFCBK, SBIBNK">
+                    </div>
+                    <div class="form-group full-width" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="accountFormSmsParsing" checked style="width: auto;">
+                        <label for="accountFormSmsParsing" style="margin: 0; cursor: pointer;">Enable SMS Automatic Parsing for this account</label>
+                    </div>
+                </div>
+
+                <div id="accountFormError" class="error-msg"></div>
+
+                <div class="modal-footer">
+                    <button type="button" onclick="closeAccountModal()" class="btn-secondary">Cancel</button>
+                    <button type="submit" id="saveAccountBtn" class="btn-primary-action">SAVE ACCOUNT</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js?v=4"></script>
+</body>
+</html>

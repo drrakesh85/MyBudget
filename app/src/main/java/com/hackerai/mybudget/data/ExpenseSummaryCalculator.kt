@@ -87,7 +87,7 @@ object ExpenseSummaryCalculator {
     }
 
     private fun periodSummary(expenses: List<Expense>, start: Long, end: Long, account: String?): Triple<Double, Double, Double> {
-        val inRange = expenses.filter { it.dateMillis in start..end }
+        val inRange = expenses.filter { it.getOrDeriveDateMillis() in start..end }
         return calculateListSummary(inRange, account)
     }
 

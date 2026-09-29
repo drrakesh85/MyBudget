@@ -95,7 +95,7 @@ fun AccountSummaryScreen(
         // We assume accountExpenses is already sorted correctly from the DB (date DESC, time DESC)
         // But running balance calculation requires chronologically ascending order (oldest first).
         // So we reverse it for calculation.
-        val sortedAsc = accountExpenses.sortedWith(compareBy({ it.dateMillis }, { it.time }, { it.rowId }))
+        val sortedAsc = accountExpenses.sortedWith(compareBy({ it.getOrDeriveDateMillis() }, { it.time }, { it.rowId }))
         
         sortedAsc.associate { exp ->
             val absVal = kotlin.math.abs(exp.amount)
@@ -103,9 +103,11 @@ fun AccountSummaryScreen(
                 exp.transactionType == "Transfer" -> {
                     if (exp.toAccount == selectedAccountName) absVal else -absVal
                 }
-                exp.transactionType == "Income" -> absVal
+                exp.transactionType == "Income" -> {
+                    if (exp.amount < 0) -absVal else absVal
+                }
                 exp.transactionType == "Expense" -> -absVal
-                else -> 0.0
+                else -> if (exp.amount >= 0) absVal else -absVal
             }
             current += semanticAmount
             exp.rowId to current
@@ -126,8 +128,8 @@ fun AccountSummaryScreen(
 
         accountExpenses.filter { exp ->
             val dateMatches = when {
-                customStart != null && customEnd != null -> exp.dateMillis in customStart..customEnd
-                periodStart != null && periodEnd != null -> exp.dateMillis in periodStart..periodEnd
+                customStart != null && customEnd != null -> exp.getOrDeriveDateMillis() in customStart..customEnd
+                periodStart != null && periodEnd != null -> exp.getOrDeriveDateMillis() in periodStart..periodEnd
                 else -> true
             }
             
@@ -150,8 +152,7 @@ fun AccountSummaryScreen(
             }
 
             dateMatches && searchMatches && categoryMatches && typeMatches
-        }
-        // Note: accountExpenses is already sorted DESC by DB query
+        }.sortedWith(compareByDescending<Expense> { it.getOrDeriveDateMillis() }.thenByDescending { it.time }.thenByDescending { it.rowId })
     }
 
     val groupedExpenses = remember(visibleExpenses) {
@@ -370,8 +371,7 @@ fun PeriodButton(label: String, isSelected: Boolean, modifier: Modifier = Modifi
 
 @Composable
 fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double, selectedAccount: String?) {
-    val parsedDate = parseDateLocal(date)
-    val dayName = parsedDate?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale.getDefault())?.uppercase() ?: ""
+    val headerText = DateUtils.formatDateHeader(date)
     
     val (income, expense, _) = ExpenseSummaryCalculator.calculateListSummary(dayExpenses, selectedAccount)
 
@@ -386,7 +386,7 @@ fun DayHeader(date: String, dayExpenses: List<Expense>, dayEndBalance: Double, s
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "$date $dayName",
+                text = headerText,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color(0xFF546E7A),

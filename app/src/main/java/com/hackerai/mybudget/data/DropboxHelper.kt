@@ -111,6 +111,46 @@ class DropboxHelper(private val context: Context) {
             .uploadAndFinish(inputStream)
     }
 
+    suspend fun uploadAutoBackup(syncData: SyncData) = withContext(Dispatchers.IO) {
+        val client = getClient() ?: throw Exception("Dropbox not connected")
+        val content = gson.toJson(syncData)
+
+        // 1. Upload primary /sync_data.json
+        val inputStream = ByteArrayInputStream(content.toByteArray())
+        client.files().uploadBuilder(syncFileName)
+            .withMode(WriteMode.OVERWRITE)
+            .uploadAndFinish(inputStream)
+
+        // 2. Upload timestamped snapshot /auto_backup_<timestamp>.json
+        val timestampStr = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())
+        val autoFileName = "/auto_backup_$timestampStr.json"
+        val autoInputStream = ByteArrayInputStream(content.toByteArray())
+        client.files().uploadBuilder(autoFileName)
+            .withMode(WriteMode.OVERWRITE)
+            .uploadAndFinish(autoInputStream)
+
+        // 3. Enforce retention: keep latest 10 auto_backup_ files
+        enforceAutoBackupRetention(client)
+    }
+
+    private fun enforceAutoBackupRetention(client: DbxClientV2) {
+        try {
+            val listResult = client.files().listFolder("")
+            val autoFiles = listResult.entries
+                .filter { it.name.startsWith("auto_backup_") }
+                .sortedByDescending { it.name }
+
+            if (autoFiles.size > 10) {
+                val toDelete = autoFiles.drop(10)
+                for (entry in toDelete) {
+                    client.files().deleteV2(entry.pathLower)
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore retention errors if directory listing fails
+        }
+    }
+
     suspend fun downloadSyncData(): SyncData? = withContext(Dispatchers.IO) {
         val client = getClient() ?: throw Exception("Dropbox not connected")
         

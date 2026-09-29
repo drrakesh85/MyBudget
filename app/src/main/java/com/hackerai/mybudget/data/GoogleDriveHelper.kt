@@ -126,6 +126,66 @@ class GoogleDriveHelper(private val context: Context) {
         }
     }
 
+    suspend fun uploadAutoBackup(account: GoogleSignInAccount, syncData: SyncData) = withContext(Dispatchers.IO) {
+        if (!hasDrivePermission(account)) {
+            throw GoogleDriveAuthException("Google Drive permission was not granted.")
+        }
+        try {
+            val service = getDriveService(account)
+            val content = gson.toJson(syncData)
+
+            // 1. Update/create primary sync_data.json
+            val syncMetadata = File()
+                .setName(syncFileName)
+                .setParents(Collections.singletonList(appDataFolderName))
+            val contentStream = ByteArrayContent.fromString("application/json", content)
+
+            val existingFile = findSyncFile(service)
+            if (existingFile != null) {
+                service.files().update(existingFile.id, null, contentStream).execute()
+            } else {
+                service.files().create(syncMetadata, contentStream).execute()
+            }
+
+            // 2. Upload timestamped snapshot auto_backup_<timestamp>.json
+            val timestampStr = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US).format(java.util.Date())
+            val autoBackupFileName = "auto_backup_$timestampStr.json"
+            val autoMetadata = File()
+                .setName(autoBackupFileName)
+                .setParents(Collections.singletonList(appDataFolderName))
+            val autoContentStream = ByteArrayContent.fromString("application/json", content)
+            service.files().create(autoMetadata, autoContentStream).execute()
+
+            // 3. Enforce Retention: keep latest 10 auto_backup_ files
+            enforceAutoBackupRetention(service)
+        } catch (e: Exception) {
+            Log.e(TAG, "Google Drive auto backup failed", e)
+            throw e
+        }
+    }
+
+    private fun enforceAutoBackupRetention(service: Drive) {
+        try {
+            val result: FileList = service.files().list()
+                .setSpaces(appDataFolderName)
+                .setQ("name contains 'auto_backup_'")
+                .setFields("files(id, name, createdTime)")
+                .setOrderBy("createdTime desc")
+                .execute()
+
+            val autoFiles = result.files ?: return
+            if (autoFiles.size > 10) {
+                val toDelete = autoFiles.drop(10)
+                for (fileToDelete in toDelete) {
+                    Log.i(TAG, "Deleting old auto backup from Drive: ${fileToDelete.name} (${fileToDelete.id})")
+                    service.files().delete(fileToDelete.id).execute()
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to enforce Google Drive auto backup retention: ${e.message}")
+        }
+    }
+
     suspend fun forceReplaceSyncData(account: GoogleSignInAccount, localSyncData: SyncData) = withContext(Dispatchers.IO) {
         val TAG_FORCE = "FORCE_CLOUD_RESTORE"
         if (!hasDrivePermission(account)) {
