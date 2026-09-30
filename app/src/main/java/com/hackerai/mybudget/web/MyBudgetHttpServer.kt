@@ -709,6 +709,10 @@ class MyBudgetHttpServer(
         val payeeList = parseMultiParam("payee")
         val typeList = parseMultiParam("transactionType").ifEmpty { parseMultiParam("type") }
 
+        val dateFilter = parms["dateFilter"] ?: parms["date"]
+        val fromDate = parms["fromDate"] ?: parms["from"]
+        val toDate = parms["toDate"] ?: parms["to"]
+
         val filtered = allExpenses.filter { exp ->
             val searchMatches = if (search.isNotBlank()) {
                 exp.payeePayer.lowercase().contains(search) ||
@@ -726,7 +730,7 @@ class MyBudgetHttpServer(
 
             val subMatches = subcategoryList.isEmpty() ||
                 subcategoryList.any { s ->
-                    if (s.equals("__NO_SUBCATEGORY__", ignoreCase = true) || s.equals("No Subcategory", ignoreCase = true)) {
+                    if (s.equals("__NO_SUBCATEGORY__", ignoreCase = true) || s.equals("No Subcategory", ignoreCase = true) || s.equals("[No Subcategory]", ignoreCase = true)) {
                         exp.subcategory.isBlank()
                     } else {
                         exp.subcategory.equals(s, ignoreCase = true)
@@ -739,8 +743,13 @@ class MyBudgetHttpServer(
             val typeMatches = typeList.isEmpty() ||
                 typeList.any { t -> exp.transactionType.equals(t, ignoreCase = true) }
 
-            searchMatches && accMatches && catMatches && subMatches && payeeMatches && typeMatches
+            val dateMatches = DateFilterEvaluator.evaluateDateFilter(exp.getOrDeriveDateMillis(), dateFilter, fromDate, toDate)
+
+            searchMatches && accMatches && catMatches && subMatches && payeeMatches && typeMatches && dateMatches
         }.sortedWith(compareByDescending<Expense> { it.getOrDeriveDateMillis() }.thenByDescending { it.time }.thenByDescending { it.rowId })
+
+        val filteredImpact = filtered.sumOf { FilteredBalanceCalculator.calculateSemanticAmount(it) }
+        val filteredBalMap = FilteredBalanceCalculator.computeMultiAccountFilteredRunningBalances(filtered)
 
         val totalItems = filtered.size
         val totalPages = (totalItems + pageSize - 1) / pageSize
@@ -749,12 +758,30 @@ class MyBudgetHttpServer(
 
         val pageItems = if (fromIndex < toIndex) filtered.subList(fromIndex, toIndex) else emptyList()
 
+        val pageItemsWithFilteredBalance = pageItems.map { exp ->
+            mapOf(
+                "rowId" to exp.rowId,
+                "date" to exp.date,
+                "time" to exp.time,
+                "description" to exp.description,
+                "payeePayer" to exp.payeePayer,
+                "category" to exp.category,
+                "subcategory" to exp.subcategory,
+                "account" to exp.account,
+                "toAccount" to exp.toAccount,
+                "transactionType" to exp.transactionType,
+                "amount" to exp.amount,
+                "filteredRunningBalance" to (filteredBalMap[exp.rowId] ?: 0.0)
+            )
+        }
+
         val response = mapOf(
             "page" to page,
             "pageSize" to pageSize,
             "totalItems" to totalItems,
             "totalPages" to totalPages,
-            "items" to pageItems
+            "filteredImpact" to filteredImpact,
+            "items" to pageItemsWithFilteredBalance
         )
         newJsonResponse(Response.Status.OK, response)
     }

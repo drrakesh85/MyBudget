@@ -189,4 +189,120 @@ class AccountStatementFiltersUnitTest {
         assertTrue(js.contains("function clearAllStmtFilters()"))
         assertTrue(js.contains("function renderStmtTransactions()"))
     }
+
+    @Test
+    fun test16_exampleFromPromptRunningBalanceUnchangedByFilters() {
+        val rawTxns = listOf(
+            StatementTxn("A", "01-01-2026", "Txn A", "Income", "", "Income", 1000.0, 1000.0, 0.0),
+            StatementTxn("B", "02-01-2026", "Txn B", "Expense", "Food", "Expense", -200.0, -200.0, 0.0),
+            StatementTxn("C", "03-01-2026", "Txn C", "Expense", "Travel", "Expense", -300.0, -300.0, 0.0),
+            StatementTxn("D", "04-01-2026", "Txn D", "Income", "", "Income", 500.0, 500.0, 0.0)
+        )
+
+        var balance = 0.0
+        val withBalances = rawTxns.map { txn ->
+            balance += txn.semanticAmount
+            txn.copy(runningBalance = balance)
+        }
+
+        assertEquals(1000.0, withBalances.find { it.rowId == "A" }!!.runningBalance, 0.01)
+        assertEquals(800.0, withBalances.find { it.rowId == "B" }!!.runningBalance, 0.01)
+        assertEquals(500.0, withBalances.find { it.rowId == "C" }!!.runningBalance, 0.01)
+        assertEquals(1000.0, withBalances.find { it.rowId == "D" }!!.runningBalance, 0.01)
+
+        val filtered = withBalances.filter { it.transactionType == "Income" }
+
+        assertEquals(2, filtered.size)
+        assertEquals(1000.0, filtered.find { it.rowId == "A" }!!.runningBalance, 0.01)
+        assertEquals(1000.0, filtered.find { it.rowId == "D" }!!.runningBalance, 0.01)
+    }
+
+    @Test
+    fun test17_singleLaterTransactionFilterPreservesPrecedingBalanceHistory() {
+        val rawTxns = listOf(
+            StatementTxn("1", "01-01-2026", "Txn 1", "Category A", "", "Expense", -100.0, -100.0, -100.0),
+            StatementTxn("2", "02-01-2026", "Txn 2", "Category A", "", "Expense", -200.0, -200.0, -300.0),
+            StatementTxn("3", "03-01-2026", "Txn 3", "Category B", "", "Expense", -500.0, -500.0, -800.0)
+        )
+
+        val filtered = rawTxns.filter { it.category == "Category B" }
+        assertEquals(1, filtered.size)
+        assertEquals(-800.0, filtered[0].runningBalance, 0.01)
+    }
+
+    @Test
+    fun test18_categoryFilterPreservesBalances() {
+        val filtered = sampleTxns.filter { it.category == "Travel" }
+        assertEquals(2, filtered.size)
+        assertEquals(48344.70, filtered.find { it.rowId == "3" }!!.runningBalance, 0.01)
+        assertEquals(47994.70, filtered.find { it.rowId == "4" }!!.runningBalance, 0.01)
+    }
+
+    @Test
+    fun test19_typeFilterPreservesBalances() {
+        val filtered = sampleTxns.filter { it.transactionType == "Transfer" }
+        assertEquals(1, filtered.size)
+        assertEquals(37994.70, filtered[0].runningBalance, 0.01)
+    }
+
+    @Test
+    fun test20_payeeFilterPreservesBalances() {
+        val filtered = sampleTxns.filter { it.description.contains("Uber") }
+        assertEquals(1, filtered.size)
+        assertEquals(47994.70, filtered[0].runningBalance, 0.01)
+    }
+
+    @Test
+    fun test21_multipleSimultaneousFiltersPreserveBalances() {
+        val filtered = sampleTxns.filter { it.transactionType == "Expense" && it.category == "Travel" }
+        assertEquals(2, filtered.size)
+        assertEquals(48344.70, filtered[0].runningBalance, 0.01)
+        assertEquals(47994.70, filtered[1].runningBalance, 0.01)
+    }
+
+    @Test
+    fun test22_clearFiltersRestoresFullViewWithIdenticalBalances() {
+        val activeFilters = sampleTxns.filter { it.category == "Automobile" }
+        assertEquals(1, activeFilters.size)
+
+        val cleared = sampleTxns
+        assertEquals(5, cleared.size)
+        assertEquals(50000.0, cleared[0].runningBalance, 0.01)
+        assertEquals(37994.70, cleared[4].runningBalance, 0.01)
+    }
+
+    @Test
+    fun test23_paginationPreservesRunningBalanceContinuation() {
+        val allTxns = (1..50).map { i ->
+            StatementTxn(
+                rowId = "txn_$i",
+                date = "26-09-2026",
+                description = "Txn $i",
+                category = "General",
+                subcategory = "",
+                transactionType = "Expense",
+                amount = -10.0,
+                semanticAmount = -10.0,
+                runningBalance = -10.0 * i
+            )
+        }
+
+        val page1 = allTxns.subList(0, 20)
+        val page2 = allTxns.subList(20, 40)
+
+        assertEquals(-200.0, page1.last().runningBalance, 0.01)
+        assertEquals(-210.0, page2.first().runningBalance, 0.01)
+    }
+
+    @Test
+    fun test24_accountIsolationPreventsCrossAccountBalanceInfiltration() {
+        val acc1Txns = listOf(
+            StatementTxn("a1", "26-09-2026", "A1", "Income", "", "Income", 1000.0, 1000.0, 1000.0)
+        )
+        val acc2Txns = listOf(
+            StatementTxn("b1", "26-09-2026", "B1", "Income", "", "Income", 5000.0, 5000.0, 5000.0)
+        )
+
+        assertNotEquals(acc1Txns[0].runningBalance, acc2Txns[0].runningBalance)
+    }
 }

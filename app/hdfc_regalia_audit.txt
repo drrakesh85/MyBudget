@@ -1,0 +1,34 @@
+==================================================
+HDFC REGALIA TRANSACTION COUNT: 11
+==================================================
+
+APP DISPLAYED SUMMARY (from ExpenseSummaryCalculator):
+  Displayed Income: 198464.0
+  Displayed Expense: -198463.64
+  Displayed Final Balance: 0.35999999998603016
+
+INDEPENDENT CORRECT BREAKDOWN:
+  1. Normal Income: 55.0
+  2. Normal Expense: 198463.64
+  3. Transfers OUT: 0.0
+  4. Transfers IN: 198409.0
+  5. Expected Final Balance: 0.35999999998603016
+  6. App Displayed Balance: 0.35999999998603016
+  7. Difference (Displayed - Expected): 0.0
+
+========================================================================================================================
+TRANSACTION TABLE FOR HDFC REGALIA (Ascending Order as processed for Running Balance):
+========================================================================================================================
+Date         | Description/Payee              | Amount       | Type            | account            | toAccount            | Effect (App/Correct)   | App Running     | Correct Running
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+14-03-2025   | abhi for ac                    | -38338.00    | Expense         | HDFC REGALIA       | null                 |  -38338.00 /  -38338.00 | -38338.00       | -38338.00      
+30-03-2025   | Transfer:30-03-2025 13:43:41   | 38338.00     | Transfer        | SBI SALARY Account | HDFC REGALIA         |  +38338.00 /  +38338.00 | 0.00            | 0.00           
+21-10-2025   | udaipur tour                   | -6957.00     | Expense         | HDFC REGALIA       | null                 |   -6957.00 /   -6957.00 | -6957.00        | -6957.00       
+03-11-2025   | Transfer:03-11-2025 10:09:08   | 6907.00      | Transfer        | SBI SALARY Account | HDFC REGALIA         |   +6907.00 /   +6907.00 | -50.00          | -50.00         
+03-11-2025   | cheq cashback                  | 50.00        | Income          | HDFC REGALIA       | null                 |     +50.00 /     +50.00 | 0.00            | 0.00           
+28-02-2026   | flipkart                       | -7824.00     | Expense         | HDFC REGALIA       | null                 |   -7824.00 /   -7824.00 | -7824.00        | -7824.00       
+17-03-2026   | Transfer:17-03-2026 10:49:44   | 7819.00      | Transfer        | SBI SALARY Account | HDFC REGALIA         |   +7819.00 /   +7819.00 | -5.00           | -5.00          
+17-03-2026   | cred                           | 5.00         | Income          | HDFC REGALIA       | null                 |      +5.00 /      +5.00 | 0.00            | 0.00           
+08-05-2026   | Mehul Prajapati                | -138189.00   | Expense         | HDFC REGALIA       | null                 | -138189.00 / -138189.00 | -138189.00      | -138189.00     
+12-05-2026   | Amazon                         | -7155.64     | Expense         | HDFC REGALIA       | null                 |   -7155.64 /   -7155.64 | -145344.64      | -145344.64     
+04-06-2026   | Transfer:04-06-2026 14:39:26   | 145345.00    | Transfer        | SBI218             | HDFC REGALIA         | +145345.00 / +145345.00 | 0.36            | 0.36           

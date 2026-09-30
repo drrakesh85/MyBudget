@@ -10,41 +10,47 @@ class MultiSelectBooleanFilterExpressionTest {
         val type: String,
         val category: String,
         val subcategory: String,
-        val payee: String
+        val payee: String,
+        val runningBalance: Double = 0.0,
+        val account: String = "Account1"
     )
 
     private val sampleDataset = listOf(
-        Txn("1", "Expense", "Food", "Snack", "Swiggy"),
-        Txn("2", "Expense", "Travel", "Taxi", "Rapido"),
-        Txn("3", "Expense", "Food", "", "Swiggy"), // No Subcategory
-        Txn("4", "Income", "Food", "Snack", "Swiggy"), // Income (does not match Expense type)
-        Txn("5", "Expense", "Utilities", "Electricity", "Torrent Power"), // Category does not match Food OR Travel
-        Txn("6", "Expense", "Travel", "Flight", "Air India"), // Subcategory Flight does not match Snack/Taxi/No Subcategory
-        Txn("7", "Expense", "Food", "Snack", "Zomato") // Payee Zomato does not match Swiggy/Rapido
+        Txn("1", "Expense", "Food", "Snack", "Swiggy", 1000.0, "Account1"),
+        Txn("2", "Expense", "Travel", "Taxi", "Rapido", 800.0, "Account1"),
+        Txn("3", "Expense", "Food", "", "Swiggy", 500.0, "Account1"), // No Subcategory
+        Txn("4", "Income", "Food", "Snack", "Swiggy", 1500.0, "Account1"), // Income
+        Txn("5", "Expense", "Utilities", "Electricity", "Torrent Power", 1200.0, "Account1"),
+        Txn("6", "Expense", "Travel", "Flight", "Air India", 200.0, "Account1"),
+        Txn("7", "Expense", "Food", "Snack", "Zomato", 100.0, "Account1"),
+        Txn("8", "Income", "Salary", "Bonus", "Employer", 5000.0, "Account2") // Account2
     )
 
     private fun evaluateFilterExpression(
-        selectedTypes: List<String>,
-        selectedCategories: List<String>,
-        selectedSubcategories: List<String>,
-        selectedPayees: List<String>
+        selectedTypes: List<String> = emptyList(),
+        selectedCategories: List<String> = emptyList(),
+        selectedSubcategories: List<String> = emptyList(),
+        selectedPayees: List<String> = emptyList(),
+        accountFilter: String? = null
     ): List<Txn> {
         return sampleDataset.filter { txn ->
-            // 1. Type (Expense)
+            if (accountFilter != null && txn.account != accountFilter) return@filter false
+
+            // 1. Type
             if (selectedTypes.isNotEmpty()) {
                 if (!selectedTypes.contains(txn.type)) return@filter false
             }
 
-            // 2. Category (Food OR Travel)
+            // 2. Category
             if (selectedCategories.isNotEmpty()) {
                 if (!selectedCategories.contains(txn.category)) return@filter false
             }
 
-            // 3. Subcategory (Snack OR Taxi OR No Subcategory)
+            // 3. Subcategory
             if (selectedSubcategories.isNotEmpty()) {
                 val txnSub = txn.subcategory.trim()
-                val matchesSub = selectedSubcategories.some { selectedSub ->
-                    if (selectedSub == "__NO_SUBCATEGORY__" || selectedSub == "No Subcategory") {
+                val matchesSub = selectedSubcategories.any { selectedSub ->
+                    if (selectedSub == "__NO_SUBCATEGORY__" || selectedSub == "No Subcategory" || selectedSub == "[No Subcategory]") {
                         txnSub.isBlank() || txnSub == "—"
                     } else {
                         selectedSub.equals(txnSub, ignoreCase = true)
@@ -53,10 +59,10 @@ class MultiSelectBooleanFilterExpressionTest {
                 if (!matchesSub) return@filter false
             }
 
-            // 4. Payee/Payer (Swiggy OR Rapido)
+            // 4. Payee/Payer
             if (selectedPayees.isNotEmpty()) {
                 val payeeLower = txn.payee.lowercase()
-                val matchesPayee = selectedPayees.some { selectedPayee ->
+                val matchesPayee = selectedPayees.any { selectedPayee ->
                     payeeLower.contains(selectedPayee.lowercase())
                 }
                 if (!matchesPayee) return@filter false
@@ -66,38 +72,159 @@ class MultiSelectBooleanFilterExpressionTest {
         }
     }
 
-    private fun <T> List<T>.some(predicate: (T) -> Boolean): Boolean {
-        return this.any(predicate)
+    @Test
+    fun test1_singleCategorySelection() {
+        val result = evaluateFilterExpression(selectedCategories = listOf("Travel"))
+        assertEquals(2, result.size)
+        assertTrue(result.all { it.category == "Travel" })
     }
 
     @Test
-    fun testUserBooleanFilterExpressionResult() {
-        val selectedTypes = listOf("Expense")
-        val selectedCategories = listOf("Food", "Travel")
-        val selectedSubcategories = listOf("Snack", "Taxi", "__NO_SUBCATEGORY__")
-        val selectedPayees = listOf("Swiggy", "Rapido")
+    fun test2_multipleCategorySelections() {
+        val result = evaluateFilterExpression(selectedCategories = listOf("Food", "Travel"))
+        assertEquals(6, result.size)
+        assertTrue(result.all { it.category == "Food" || it.category == "Travel" })
+    }
 
+    @Test
+    fun test3_singleSubcategorySelection() {
+        val result = evaluateFilterExpression(selectedSubcategories = listOf("Taxi"))
+        assertEquals(1, result.size)
+        assertEquals("Taxi", result[0].subcategory)
+    }
+
+    @Test
+    fun test4_multipleSubcategorySelections() {
+        val result = evaluateFilterExpression(selectedSubcategories = listOf("Snack", "Taxi"))
+        assertEquals(4, result.size)
+        assertTrue(result.all { it.subcategory == "Snack" || it.subcategory == "Taxi" })
+    }
+
+    @Test
+    fun test5_blankNoSubcategorySelection() {
+        val result = evaluateFilterExpression(selectedSubcategories = listOf("No Subcategory"))
+        assertEquals(1, result.size)
+        assertEquals("3", result[0].rowId)
+        assertTrue(result[0].subcategory.isBlank())
+    }
+
+    @Test
+    fun test6_multiplePayeePayerSelections() {
+        val result = evaluateFilterExpression(selectedPayees = listOf("Swiggy", "Zomato"))
+        assertEquals(4, result.size)
+        assertTrue(result.all { it.payee == "Swiggy" || it.payee == "Zomato" })
+    }
+
+    @Test
+    fun test7_typeFiltering() {
+        val result = evaluateFilterExpression(selectedTypes = listOf("Income"))
+        assertEquals(2, result.size)
+        assertTrue(result.all { it.type == "Income" })
+    }
+
+    @Test
+    fun test8_categoryAndSubcategoryCombination() {
         val result = evaluateFilterExpression(
-            selectedTypes,
-            selectedCategories,
-            selectedSubcategories,
-            selectedPayees
+            selectedCategories = listOf("Travel"),
+            selectedSubcategories = listOf("Taxi")
+        )
+        assertEquals(1, result.size)
+        assertEquals("2", result[0].rowId)
+    }
+
+    @Test
+    fun test9_categoryAndPayeePayerCombination() {
+        val result = evaluateFilterExpression(
+            selectedCategories = listOf("Food"),
+            selectedPayees = listOf("Zomato")
+        )
+        assertEquals(1, result.size)
+        assertEquals("7", result[0].rowId)
+    }
+
+    @Test
+    fun test10_subcategoryAndPayeePayerCombination() {
+        val result = evaluateFilterExpression(
+            selectedSubcategories = listOf("Snack"),
+            selectedPayees = listOf("Swiggy")
+        )
+        assertEquals(2, result.size)
+        assertTrue(result.all { it.subcategory == "Snack" && it.payee == "Swiggy" })
+    }
+
+    @Test
+    fun test11_categorySubcategoryPayeeCombination() {
+        val result = evaluateFilterExpression(
+            selectedCategories = listOf("Food"),
+            selectedSubcategories = listOf("Snack"),
+            selectedPayees = listOf("Zomato")
+        )
+        assertEquals(1, result.size)
+        assertEquals("7", result[0].rowId)
+    }
+
+    @Test
+    fun test12_allFilterGroupsSimultaneously() {
+        val result = evaluateFilterExpression(
+            selectedTypes = listOf("Expense"),
+            selectedCategories = listOf("Food", "Travel"),
+            selectedSubcategories = listOf("Snack", "Taxi", "No Subcategory"),
+            selectedPayees = listOf("Swiggy", "Rapido")
         )
 
-        // Expected matching transactions:
-        // Txn 1: Expense AND Food AND Snack AND Swiggy -> MATCH
-        // Txn 2: Expense AND Travel AND Taxi AND Rapido -> MATCH
-        // Txn 3: Expense AND Food AND "" (No Subcategory) AND Swiggy -> MATCH
         assertEquals(3, result.size)
-
         val matchedIds = result.map { it.rowId }
         assertTrue(matchedIds.contains("1"))
         assertTrue(matchedIds.contains("2"))
         assertTrue(matchedIds.contains("3"))
+    }
 
-        assertFalse("Txn 4 (Income) must be excluded by Type filter", matchedIds.contains("4"))
-        assertFalse("Txn 5 (Utilities) must be excluded by Category filter", matchedIds.contains("5"))
-        assertFalse("Txn 6 (Flight) must be excluded by Subcategory filter", matchedIds.contains("6"))
-        assertFalse("Txn 7 (Zomato) must be excluded by Payee filter", matchedIds.contains("7"))
+    @Test
+    fun test13_clearFilters() {
+        val filtered = evaluateFilterExpression(
+            selectedTypes = listOf("Expense"),
+            selectedCategories = listOf("Food")
+        )
+        assertEquals(3, filtered.size)
+
+        // Clear filters
+        val cleared = evaluateFilterExpression()
+        assertEquals(8, cleared.size)
+    }
+
+    @Test
+    fun test14_emptyResultSet() {
+        val result = evaluateFilterExpression(
+            selectedCategories = listOf("Food"),
+            selectedSubcategories = listOf("Flight")
+        )
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun test15_runningBalancesUnchangedAfterFiltering() {
+        val originalTxn1 = sampleDataset.find { it.rowId == "1" }!!
+        val originalTxn2 = sampleDataset.find { it.rowId == "2" }!!
+
+        assertEquals(1000.0, originalTxn1.runningBalance, 0.01)
+        assertEquals(800.0, originalTxn2.runningBalance, 0.01)
+
+        val filtered = evaluateFilterExpression(selectedCategories = listOf("Travel"))
+        assertEquals(2, filtered.size)
+
+        val filteredTxn2 = filtered.find { it.rowId == "2" }!!
+        assertEquals(800.0, filteredTxn2.runningBalance, 0.01)
+    }
+
+    @Test
+    fun test16_accountIsolationRemainsIntact() {
+        val acc1Results = evaluateFilterExpression(accountFilter = "Account1")
+        val acc2Results = evaluateFilterExpression(accountFilter = "Account2")
+
+        assertEquals(7, acc1Results.size)
+        assertEquals(1, acc2Results.size)
+
+        assertTrue(acc1Results.all { it.account == "Account1" })
+        assertTrue(acc2Results.all { it.account == "Account2" })
     }
 }

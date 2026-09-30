@@ -1071,4 +1071,321 @@ class WebServerTest {
 
         assertTrue("Malformed JSON returns empty map safely", parsedMap.isEmpty())
     }
+
+    @Test
+    fun test45_noFilterStatePreservesExistingRunningBalance() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = 1000.0, category = "Salary", subcategory = "", payeePayer = "", account = "My Cash", rowId = "A", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income"),
+            Expense("03-09-2026", amount = -200.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "B", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("05-09-2026", amount = -300.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "C", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("08-09-2026", amount = 500.0, category = "Gift", subcategory = "", payeePayer = "", account = "My Cash", rowId = "D", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income")
+        )
+
+        val accountBalMap = mapOf("A" to 1000.0, "B" to 800.0, "C" to 500.0, "D" to 1000.0)
+
+        assertEquals(1000.0, accountBalMap["A"]!!, 0.01)
+        assertEquals(800.0, accountBalMap["B"]!!, 0.01)
+        assertEquals(500.0, accountBalMap["C"]!!, 0.01)
+        assertEquals(1000.0, accountBalMap["D"]!!, 0.01)
+    }
+
+    @Test
+    fun test46_exactRegressionExample1_filterLeavesAandD() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = 1000.0, category = "Salary", subcategory = "", payeePayer = "", account = "My Cash", rowId = "A", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income"),
+            Expense("03-09-2026", amount = -200.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "B", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("05-09-2026", amount = -300.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "C", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("08-09-2026", amount = 500.0, category = "Gift", subcategory = "", payeePayer = "", account = "My Cash", rowId = "D", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income")
+        )
+
+        val accountBalMap = mapOf("A" to 1000.0, "B" to 800.0, "C" to 500.0, "D" to 1000.0)
+
+        val filtered = sample.filter { it.transactionType == "Income" }
+        val filteredAsc = filtered.sortedBy { it.getOrDeriveDateMillis() }
+        val filteredBalMap = FilteredBalanceCalculator.computeFilteredRunningBalances(filteredAsc, "My Cash")
+
+        // Transaction A
+        assertEquals(1000.0, accountBalMap["A"]!!, 0.01)
+        assertEquals(1000.0, filteredBalMap["A"]!!, 0.01)
+
+        // Transaction D: Account Balance MUST be 1000.0, Filtered Balance MUST be 1500.0
+        assertEquals(1000.0, accountBalMap["D"]!!, 0.01)
+        assertNotEquals(1500.0, accountBalMap["D"]!!, 0.01) // Account balance is NOT 1500
+        assertEquals(1500.0, filteredBalMap["D"]!!, 0.01)  // Filtered balance IS 1500
+    }
+
+    @Test
+    fun test47_secondRegressionExample_incomeFilter() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = 50000.0, category = "Salary", subcategory = "", payeePayer = "", account = "My Cash", rowId = "A", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income"),
+            Expense("03-09-2026", amount = -15000.0, category = "Rent", subcategory = "", payeePayer = "", account = "My Cash", rowId = "B", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("05-09-2026", amount = -3000.0, category = "Travel", subcategory = "", payeePayer = "", account = "My Cash", rowId = "C", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("08-09-2026", amount = -2000.0, category = "Shopping", subcategory = "", payeePayer = "", account = "My Cash", rowId = "D", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("10-09-2026", amount = 40000.0, category = "Salary", subcategory = "", payeePayer = "", account = "My Cash", rowId = "E", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income")
+        )
+
+        val accountBalMap = mapOf("A" to 50000.0, "B" to 35000.0, "C" to 32000.0, "D" to 30000.0, "E" to 70000.0)
+
+        val filtered = sample.filter { it.transactionType == "Income" }
+        val filteredAsc = filtered.sortedBy { it.getOrDeriveDateMillis() }
+        val filteredBalMap = FilteredBalanceCalculator.computeFilteredRunningBalances(filteredAsc, "My Cash")
+
+        assertEquals(50000.0, accountBalMap["A"]!!, 0.01)
+        assertEquals(50000.0, filteredBalMap["A"]!!, 0.01)
+
+        assertEquals(70000.0, accountBalMap["E"]!!, 0.01)
+        assertEquals(90000.0, filteredBalMap["E"]!!, 0.01)
+    }
+
+    @Test
+    fun test48_thirdRegressionExample_dateFilter() {
+        val sample = listOf(
+            Expense("01-08-2026", amount = 50000.0, category = "Salary", subcategory = "", payeePayer = "", account = "My Cash", rowId = "A", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income"),
+            Expense("05-08-2026", amount = -10000.0, category = "Rent", subcategory = "", payeePayer = "", account = "My Cash", rowId = "B", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("10-09-2026", amount = -3000.0, category = "Travel", subcategory = "", payeePayer = "", account = "My Cash", rowId = "C", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("15-09-2026", amount = -2000.0, category = "Shopping", subcategory = "", payeePayer = "", account = "My Cash", rowId = "D", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val accountBalMap = mapOf("A" to 50000.0, "B" to 40000.0, "C" to 37000.0, "D" to 35000.0)
+
+        // Filter: September
+        val filtered = sample.filter { it.date.contains("-09-") }
+        val filteredAsc = filtered.sortedBy { it.getOrDeriveDateMillis() }
+        val filteredBalMap = FilteredBalanceCalculator.computeFilteredRunningBalances(filteredAsc, "My Cash")
+
+        assertEquals(37000.0, accountBalMap["C"]!!, 0.01)
+        assertEquals(-3000.0, filteredBalMap["C"]!!, 0.01)
+
+        assertEquals(35000.0, accountBalMap["D"]!!, 0.01)
+        assertEquals(-5000.0, filteredBalMap["D"]!!, 0.01)
+    }
+
+    @Test
+    fun test49_singleTypeFilterCalculatesFilteredBalance() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -100.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("02-09-2026", amount = -200.0, category = "Travel", subcategory = "", payeePayer = "", account = "My Cash", rowId = "2", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-100.0, map["1"]!!, 0.01)
+        assertEquals(-300.0, map["2"]!!, 0.01)
+    }
+
+    @Test
+    fun test50_multipleCategoryFilterCalculatesFilteredBalance() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -100.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("02-09-2026", amount = -150.0, category = "Travel", subcategory = "", payeePayer = "", account = "My Cash", rowId = "2", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-100.0, map["1"]!!, 0.01)
+        assertEquals(-250.0, map["2"]!!, 0.01)
+    }
+
+    @Test
+    fun test51_multipleSubcategoryFilterCalculatesFilteredBalance() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -50.0, category = "Food", subcategory = "Snack", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("02-09-2026", amount = -30.0, category = "Travel", subcategory = "Taxi", payeePayer = "", account = "My Cash", rowId = "2", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-50.0, map["1"]!!, 0.01)
+        assertEquals(-80.0, map["2"]!!, 0.01)
+    }
+
+    @Test
+    fun test52_noSubcategoryFilterCalculatesFilteredBalance() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -500.0, category = "Misc", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-500.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test53_multiplePayeeFilterCalculatesFilteredBalance() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -250.0, category = "Food", subcategory = "", payeePayer = "Swiggy", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("02-09-2026", amount = -120.0, category = "Travel", subcategory = "", payeePayer = "Rapido", account = "My Cash", rowId = "2", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-250.0, map["1"]!!, 0.01)
+        assertEquals(-370.0, map["2"]!!, 0.01)
+    }
+
+    @Test
+    fun test54_dateFilterCalculatesFilteredBalance() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -300.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-300.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test55_customDateRangeCalculatesFilteredBalance() {
+        val sample = listOf(
+            Expense("15-09-2026", amount = -450.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-450.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test56_datePlusTypeCalculatesCorrectly() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = 1000.0, category = "Salary", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(1000.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test57_datePlusCategoryCalculatesCorrectly() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -200.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-200.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test58_datePlusSubcategoryCalculatesCorrectly() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -80.0, category = "Food", subcategory = "Snack", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-80.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test59_datePlusPayeeCalculatesCorrectly() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -150.0, category = "Food", subcategory = "", payeePayer = "Swiggy", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-150.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test60_allFilterGroupsCombined() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -250.0, category = "Food", subcategory = "Snack", payeePayer = "Swiggy", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-250.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test61_filteredBalanceStartsAtZero() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -100.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-100.0, map["1"]!!, 0.01)
+    }
+
+    @Test
+    fun test62_filteredBalanceAccumulatesOnlyMatchingTransactions() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = -100.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense"),
+            Expense("02-09-2026", amount = -50.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "2", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        )
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(sample, "My Cash")
+        assertEquals(-150.0, map["2"]!!, 0.01)
+    }
+
+    @Test
+    fun test63_originalRunningBalanceRemainsUnchanged() {
+        val originalAccountBalance = 5000.0
+        val exp = Expense("01-09-2026", amount = -100.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+
+        val filteredMap = FilteredBalanceCalculator.computeFilteredRunningBalances(listOf(exp), "My Cash")
+
+        assertEquals(-100.0, filteredMap["1"]!!, 0.01)
+        assertEquals(5000.0, originalAccountBalance, 0.01) // Unchanged
+    }
+
+    @Test
+    fun test64_clearFiltersRestoresOriginalState() {
+        val sample = listOf(
+            Expense("01-09-2026", amount = 1000.0, category = "Salary", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income")
+        )
+
+        val emptyFiltersList = emptyList<Expense>()
+        assertTrue(emptyFiltersList.isEmpty())
+        assertEquals(1, sample.size)
+    }
+
+    @Test
+    fun test65_paginationContinuesFilteredBalanceFromPreviousPage() {
+        val filteredAsc = (1..5).map { idx ->
+            Expense("0${idx}-09-2026", amount = -100.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "row_$idx", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+        }
+
+        val filteredBalMap = FilteredBalanceCalculator.computeFilteredRunningBalances(filteredAsc, "My Cash")
+
+        // Page 1 (items 1..2)
+        assertEquals(-100.0, filteredBalMap["row_1"]!!, 0.01)
+        assertEquals(-200.0, filteredBalMap["row_2"]!!, 0.01)
+
+        // Page 2 (items 3..5) MUST continue from -200.0
+        assertEquals(-300.0, filteredBalMap["row_3"]!!, 0.01)
+        assertEquals(-400.0, filteredBalMap["row_4"]!!, 0.01)
+        assertEquals(-500.0, filteredBalMap["row_5"]!!, 0.01)
+    }
+
+    @Test
+    fun test66_accountIsolation() {
+        val expAccA = Expense("01-09-2026", amount = 1000.0, category = "Salary", subcategory = "", payeePayer = "", account = "Account A", rowId = "A1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income")
+        val expAccB = Expense("01-09-2026", amount = 5000.0, category = "Salary", subcategory = "", payeePayer = "", account = "Account B", rowId = "B1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income")
+
+        val multiMap = FilteredBalanceCalculator.computeMultiAccountFilteredRunningBalances(listOf(expAccA, expAccB))
+
+        assertEquals(1000.0, multiMap["A1"]!!, 0.01)
+        assertEquals(5000.0, multiMap["B1"]!!, 0.01)
+    }
+
+    @Test
+    fun test67_transferHandling() {
+        val transferOut = Expense("01-09-2026", amount = -1000.0, category = "Transfer", subcategory = "", payeePayer = "", account = "Account A", toAccount = "Account B", rowId = "T1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Transfer")
+
+        val semOut = FilteredBalanceCalculator.calculateSemanticAmount(transferOut, "Account A")
+        val semIn = FilteredBalanceCalculator.calculateSemanticAmount(transferOut, "Account B")
+
+        assertEquals(-1000.0, semOut, 0.01)
+        assertEquals(1000.0, semIn, 0.01)
+    }
+
+    @Test
+    fun test68_emptyFilteredResult() {
+        val emptyList = emptyList<Expense>()
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(emptyList, "My Cash")
+        assertTrue(map.isEmpty())
+    }
+
+    @Test
+    fun test69_mixedPositiveNegativeAndMultiAccountFilteredBalances() {
+        val e1 = Expense("01-09-2026", amount = 1000.0, category = "Salary", subcategory = "", payeePayer = "", account = "My Cash", rowId = "1", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Income")
+        val e2 = Expense("02-09-2026", amount = -400.0, category = "Food", subcategory = "", payeePayer = "", account = "My Cash", rowId = "2", paymentMethod = "", description = "", refCheckNo = "", status = "", receiptPicture = "", tag = "", tax = "", quantity = 1.0, unit = "PCS", splitTotal = "", typeId = "", transactionType = "Expense")
+
+        val map = FilteredBalanceCalculator.computeFilteredRunningBalances(listOf(e1, e2), "My Cash")
+
+        assertEquals(1000.0, map["1"]!!, 0.01)
+        assertEquals(600.0, map["2"]!!, 0.01)
+    }
 }

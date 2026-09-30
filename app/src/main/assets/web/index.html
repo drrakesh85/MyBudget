@@ -9,37 +9,40 @@
 <body>
     <!-- Main App Layout -->
     <div id="appLayout" class="app-layout">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <span class="logo-icon">💰</span>
-                <span class="brand-title">MyBudget</span>
-            </div>
+        <!-- Top Navigation Bar -->
+        <header class="top-navbar">
+            <div class="navbar-container">
+                <div class="navbar-brand">
+                    <span class="logo-icon">💰</span>
+                    <span class="brand-title">MyBudget</span>
+                </div>
 
-            <nav class="sidebar-nav">
-                <button class="nav-item active" onclick="switchNav('dashboard')">
-                    <span class="nav-icon">📊</span> Dashboard
-                </button>
-                <button class="nav-item" onclick="switchNav('accounts')">
-                    <span class="nav-icon">💳</span> Accounts
-                </button>
-                <button class="nav-item" onclick="switchNav('transactions')">
-                    <span class="nav-icon">📑</span> Transactions
-                </button>
-                <button class="nav-item" onclick="switchNav('categories')">
-                    <span class="nav-icon">🏷️</span> Categories
-                </button>
-            </nav>
-        </aside>
+                <nav class="top-nav">
+                    <button class="nav-item active" onclick="switchNav('dashboard')">
+                        <span class="nav-icon">📊</span> Dashboard
+                    </button>
+                    <button class="nav-item" onclick="switchNav('accounts')">
+                        <span class="nav-icon">💳</span> Accounts
+                    </button>
+                    <button class="nav-item" onclick="switchNav('transactions')">
+                        <span class="nav-icon">📑</span> Transactions
+                    </button>
+                    <button class="nav-item" onclick="switchNav('categories')">
+                        <span class="nav-icon">🏷️</span> Categories
+                    </button>
+                </nav>
+
+                <div class="navbar-right">
+                    <span id="connectionStatus" class="status-indicator">Connected to Phone</span>
+                </div>
+            </div>
+        </header>
 
         <!-- Main Content Area -->
         <main class="main-content">
             <!-- Header Bar -->
             <header class="top-header">
                 <h1 id="pageTitle">Dashboard</h1>
-                <div class="header-right">
-                    <span id="connectionStatus" class="status-indicator">Connected to Phone</span>
-                </div>
             </header>
 
             <!-- Dashboard View -->
@@ -125,6 +128,33 @@
                 <!-- Account Statement Multi-Select Filters Section -->
                 <div class="stmt-filter-card">
                     <div class="multi-select-group">
+                        <!-- Date / Duration Popover -->
+                        <div class="popover-container" id="popoverStmtDateContainer">
+                            <button type="button" class="popover-trigger" id="btnStmtDateTrigger" data-popover="popoverStmtDate">
+                                <span>Date: All Till Date</span> <span class="arrow">▾</span>
+                            </button>
+                            <div class="popover-panel" id="popoverStmtDate">
+                                <div class="popover-header">
+                                    <strong>Date / Duration</strong>
+                                </div>
+                                <div class="popover-list">
+                                    <label class="popover-option"><input type="radio" name="stmtDateOpt" value="ALL" checked onchange="onStmtDatePresetChanged(this.value)"> <span>All Till Date</span></label>
+                                    <label class="popover-option"><input type="radio" name="stmtDateOpt" value="TODAY" onchange="onStmtDatePresetChanged(this.value)"> <span>Today</span></label>
+                                    <label class="popover-option"><input type="radio" name="stmtDateOpt" value="THIS_WEEK" onchange="onStmtDatePresetChanged(this.value)"> <span>This Week</span></label>
+                                    <label class="popover-option"><input type="radio" name="stmtDateOpt" value="THIS_MONTH" onchange="onStmtDatePresetChanged(this.value)"> <span>This Month</span></label>
+                                    <label class="popover-option"><input type="radio" name="stmtDateOpt" value="THIS_YEAR" onchange="onStmtDatePresetChanged(this.value)"> <span>This Year</span></label>
+                                    <label class="popover-option"><input type="radio" name="stmtDateOpt" value="CUSTOM" onchange="onStmtDatePresetChanged(this.value)"> <span>Custom Duration</span></label>
+                                </div>
+                                <div id="boxStmtCustomDate" style="display: none; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; flex-direction: column; gap: 0.4rem;">
+                                    <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">From Date:</label>
+                                    <input type="date" id="inputStmtFromDate" onchange="onStmtCustomDateChanged()" style="padding: 0.35rem; border: 1px solid #cbd5e1; border-radius: 0.35rem; font-size: 0.8rem;">
+                                    <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">To Date:</label>
+                                    <input type="date" id="inputStmtToDate" onchange="onStmtCustomDateChanged()" style="padding: 0.35rem; border: 1px solid #cbd5e1; border-radius: 0.35rem; font-size: 0.8rem;">
+                                    <div id="errStmtCustomDate" style="color: #c62828; font-size: 0.75rem; display: none; margin-top: 0.2rem;"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Type Popover -->
                         <div class="popover-container" id="popoverStmtTypeContainer">
                             <button type="button" class="popover-trigger" id="btnStmtTypeTrigger" data-popover="popoverStmtType">
@@ -246,6 +276,33 @@
                         </div>
 
                         <div class="multi-select-group">
+                            <!-- Date / Duration Popover -->
+                            <div class="popover-container" id="popoverDateContainer">
+                                <button type="button" class="popover-trigger" id="btnDateTrigger" data-popover="popoverDate">
+                                    <span>Date: All Till Date</span> <span class="arrow">▾</span>
+                                </button>
+                                <div class="popover-panel" id="popoverDate">
+                                    <div class="popover-header">
+                                        <strong>Date / Duration</strong>
+                                    </div>
+                                    <div class="popover-list">
+                                        <label class="popover-option"><input type="radio" name="dateOpt" value="ALL" checked onchange="onDatePresetChanged(this.value)"> <span>All Till Date</span></label>
+                                        <label class="popover-option"><input type="radio" name="dateOpt" value="TODAY" onchange="onDatePresetChanged(this.value)"> <span>Today</span></label>
+                                        <label class="popover-option"><input type="radio" name="dateOpt" value="THIS_WEEK" onchange="onDatePresetChanged(this.value)"> <span>This Week</span></label>
+                                        <label class="popover-option"><input type="radio" name="dateOpt" value="THIS_MONTH" onchange="onDatePresetChanged(this.value)"> <span>This Month</span></label>
+                                        <label class="popover-option"><input type="radio" name="dateOpt" value="THIS_YEAR" onchange="onDatePresetChanged(this.value)"> <span>This Year</span></label>
+                                        <label class="popover-option"><input type="radio" name="dateOpt" value="CUSTOM" onchange="onDatePresetChanged(this.value)"> <span>Custom Duration</span></label>
+                                    </div>
+                                    <div id="boxCustomDate" style="display: none; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; flex-direction: column; gap: 0.4rem;">
+                                        <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">From Date:</label>
+                                        <input type="date" id="inputFromDate" onchange="onCustomDateChanged()" style="padding: 0.35rem; border: 1px solid #cbd5e1; border-radius: 0.35rem; font-size: 0.8rem;">
+                                        <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">To Date:</label>
+                                        <input type="date" id="inputToDate" onchange="onCustomDateChanged()" style="padding: 0.35rem; border: 1px solid #cbd5e1; border-radius: 0.35rem; font-size: 0.8rem;">
+                                        <div id="errCustomDate" style="color: #c62828; font-size: 0.75rem; display: none; margin-top: 0.2rem;"></div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Type Popover -->
                             <div class="popover-container" id="popoverTypeContainer">
                                 <button type="button" class="popover-trigger" id="btnTypeTrigger" data-popover="popoverType">

@@ -4,6 +4,9 @@ let cachedAccounts = [];
 let cachedCategories = {};
 let cachedPayees = [];
 
+let selectedDatePreset = 'ALL';
+let customFromDate = '';
+let customToDate = '';
 let selectedTypes = [];
 let selectedAccounts = [];
 let selectedCategories = [];
@@ -325,6 +328,9 @@ async function handleDeleteAccount(accountName) {
 // 3. Account Statement View & Multi-Select Filters
 let currentStmtAccountName = '';
 let cachedStmtData = null;
+let stmtSelectedDatePreset = 'ALL';
+let stmtCustomFromDate = '';
+let stmtCustomToDate = '';
 let stmtSelectedTypes = [];
 let stmtSelectedCategories = [];
 let stmtSelectedSubcategories = [];
@@ -337,6 +343,9 @@ async function viewStatement(accountName) {
 
     if (currentStmtAccountName !== accountName) {
         currentStmtAccountName = accountName;
+        stmtSelectedDatePreset = 'ALL';
+        stmtCustomFromDate = '';
+        stmtCustomToDate = '';
         stmtSelectedTypes = [];
         stmtSelectedCategories = [];
         stmtSelectedSubcategories = [];
@@ -540,11 +549,202 @@ function filterStmtPopoverList(filterType, searchVal) {
     });
 }
 
+function parseTxnDateToMillis(dateStr) {
+    if (!dateStr) return 0;
+    const str = dateStr.trim();
+    const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dmyMatch) {
+        const day = parseInt(dmyMatch[1], 10);
+        const month = parseInt(dmyMatch[2], 10) - 1;
+        const year = parseInt(dmyMatch[3], 10);
+        return new Date(year, month, day, 0, 0, 0, 0).getTime();
+    }
+    const ymdMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (ymdMatch) {
+        const year = parseInt(ymdMatch[1], 10);
+        const month = parseInt(ymdMatch[2], 10) - 1;
+        const day = parseInt(ymdMatch[3], 10);
+        return new Date(year, month, day, 0, 0, 0, 0).getTime();
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function calculateDateRangeMillis(preset, customFromStr, customToStr) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+
+    if (preset === 'TODAY' || preset === 'Today') {
+        return { start: todayStart, end: todayEnd, isValid: true };
+    }
+
+    if (preset === 'THIS_WEEK' || preset === 'This Week') {
+        const dayOfWeek = now.getDay();
+        const distToMonday = (dayOfWeek + 6) % 7;
+        const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distToMonday, 0, 0, 0, 0);
+        const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6, 23, 59, 59, 999);
+        return { start: monday.getTime(), end: sunday.getTime(), isValid: true };
+    }
+
+    if (preset === 'THIS_MONTH' || preset === 'This Month') {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+        const monthEnd = new Date(nextMonthStart.getTime() - 1);
+        return { start: monthStart.getTime(), end: monthEnd.getTime(), isValid: true };
+    }
+
+    if (preset === 'THIS_YEAR' || preset === 'This Year') {
+        const yearStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        const yearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+        return { start: yearStart.getTime(), end: yearEnd.getTime(), isValid: true };
+    }
+
+    if (preset === 'CUSTOM' || preset === 'Custom') {
+        if (!customFromStr || !customToStr) {
+            return { start: null, end: null, isValid: false, error: 'Please select both From and To dates.' };
+        }
+        const fromMillis = parseTxnDateToMillis(customFromStr);
+        const toMillis = parseTxnDateToMillis(customToStr);
+        if (!fromMillis || !toMillis) {
+            return { start: null, end: null, isValid: false, error: 'Invalid date format.' };
+        }
+        if (fromMillis > toMillis) {
+            return { start: null, end: null, isValid: false, error: 'From Date cannot be after To Date.' };
+        }
+        const toEndMillis = toMillis + (24 * 60 * 60 * 1000 - 1);
+        return { start: fromMillis, end: toEndMillis, isValid: true };
+    }
+
+    return { start: null, end: null, isValid: true };
+}
+
+function updateDateTriggerText(triggerId, preset) {
+    const trigger = document.getElementById(triggerId);
+    if (!trigger) return;
+
+    let text = 'Date: All Till Date';
+    let isPresetActive = false;
+
+    if (preset === 'TODAY') { text = 'Date: Today'; isPresetActive = true; }
+    else if (preset === 'THIS_WEEK') { text = 'Date: This Week'; isPresetActive = true; }
+    else if (preset === 'THIS_MONTH') { text = 'Date: This Month'; isPresetActive = true; }
+    else if (preset === 'THIS_YEAR') { text = 'Date: This Year'; isPresetActive = true; }
+    else if (preset === 'CUSTOM') { text = 'Date: Custom'; isPresetActive = true; }
+
+    const firstSpan = trigger.querySelector('span:not(.arrow)');
+    if (firstSpan) {
+        firstSpan.textContent = text;
+    } else {
+        trigger.innerHTML = `<span>${escapeHtml(text)}</span> <span class="arrow">▾</span>`;
+    }
+
+    if (isPresetActive) {
+        trigger.classList.add('has-selections', 'has-selection');
+    } else {
+        trigger.classList.remove('has-selections', 'has-selection');
+    }
+}
+
+function onStmtDatePresetChanged(val) {
+    stmtSelectedDatePreset = val;
+    const box = document.getElementById('boxStmtCustomDate');
+    const err = document.getElementById('errStmtCustomDate');
+    if (val === 'CUSTOM') {
+        if (box) box.style.display = 'flex';
+        onStmtCustomDateChanged();
+    } else {
+        if (box) box.style.display = 'none';
+        if (err) { err.style.display = 'none'; err.textContent = ''; }
+        updateStmtFilterUI();
+        renderStmtTransactions();
+    }
+}
+
+function onStmtCustomDateChanged() {
+    const fromInput = document.getElementById('inputStmtFromDate');
+    const toInput = document.getElementById('inputStmtToDate');
+    stmtCustomFromDate = fromInput ? fromInput.value : '';
+    stmtCustomToDate = toInput ? toInput.value : '';
+
+    const range = calculateDateRangeMillis('CUSTOM', stmtCustomFromDate, stmtCustomToDate);
+    const err = document.getElementById('errStmtCustomDate');
+    if (!range.isValid) {
+        if (err && range.error) {
+            err.style.display = 'block';
+            err.textContent = range.error;
+        }
+        updateStmtFilterUI();
+        return;
+    }
+    if (err) {
+        err.style.display = 'none';
+        err.textContent = '';
+    }
+    updateStmtFilterUI();
+    renderStmtTransactions();
+}
+
+function onDatePresetChanged(val) {
+    selectedDatePreset = val;
+    const box = document.getElementById('boxCustomDate');
+    const err = document.getElementById('errCustomDate');
+    if (val === 'CUSTOM') {
+        if (box) box.style.display = 'flex';
+        onCustomDateChanged();
+    } else {
+        if (box) box.style.display = 'none';
+        if (err) { err.style.display = 'none'; err.textContent = ''; }
+        updateFilterUI();
+        loadTransactions(1);
+    }
+}
+
+function onCustomDateChanged() {
+    const fromInput = document.getElementById('inputFromDate');
+    const toInput = document.getElementById('inputToDate');
+    customFromDate = fromInput ? fromInput.value : '';
+    customToDate = toInput ? toInput.value : '';
+
+    const range = calculateDateRangeMillis('CUSTOM', customFromDate, customToDate);
+    const err = document.getElementById('errCustomDate');
+    if (!range.isValid) {
+        if (err && range.error) {
+            err.style.display = 'block';
+            err.textContent = range.error;
+        }
+        updateFilterUI();
+        return;
+    }
+    if (err) {
+        err.style.display = 'none';
+        err.textContent = '';
+    }
+    updateFilterUI();
+    loadTransactions(1);
+}
+
 function clearAllStmtFilters() {
+    stmtSelectedDatePreset = 'ALL';
+    stmtCustomFromDate = '';
+    stmtCustomToDate = '';
     stmtSelectedTypes = [];
     stmtSelectedCategories = [];
     stmtSelectedSubcategories = [];
     stmtSelectedPayees = [];
+
+    const allRadio = document.querySelector('input[name="stmtDateOpt"][value="ALL"]');
+    if (allRadio) allRadio.checked = true;
+
+    const fromInput = document.getElementById('inputStmtFromDate');
+    if (fromInput) fromInput.value = '';
+    const toInput = document.getElementById('inputStmtToDate');
+    if (toInput) toInput.value = '';
+
+    const box = document.getElementById('boxStmtCustomDate');
+    if (box) box.style.display = 'none';
+    const err = document.getElementById('errStmtCustomDate');
+    if (err) { err.style.display = 'none'; err.textContent = ''; }
 
     document.querySelectorAll('#viewStatement .popover-panel input[type="checkbox"]').forEach(cb => cb.checked = false);
 
@@ -554,15 +754,17 @@ function clearAllStmtFilters() {
 }
 
 function updateStmtFilterUI() {
+    updateDateTriggerText('btnStmtDateTrigger', stmtSelectedDatePreset);
     updateTriggerText('btnStmtTypeTrigger', stmtSelectedTypes, 'Type');
     updateTriggerText('btnStmtCategoryTrigger', stmtSelectedCategories, 'Category');
 
-    const subDisplayNames = stmtSelectedSubcategories.map(s => s === '__NO_SUBCATEGORY__' ? '[No Subcategory]' : s);
+    const subDisplayNames = stmtSelectedSubcategories.map(s => (s === '__NO_SUBCATEGORY__' || s === 'No Subcategory' || s === '[No Subcategory]') ? 'No Subcategory' : s);
     updateTriggerText('btnStmtSubcategoryTrigger', subDisplayNames, 'Subcategory');
 
     updateTriggerText('btnStmtPayeeTrigger', stmtSelectedPayees, 'Payee / Payer');
 
-    const hasActiveFilters = stmtSelectedTypes.length > 0 ||
+    const hasActiveFilters = stmtSelectedDatePreset !== 'ALL' ||
+        stmtSelectedTypes.length > 0 ||
         stmtSelectedCategories.length > 0 ||
         stmtSelectedSubcategories.length > 0 ||
         stmtSelectedPayees.length > 0;
@@ -580,7 +782,24 @@ function renderStmtTransactions() {
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    const dateRange = calculateDateRangeMillis(stmtSelectedDatePreset, stmtCustomFromDate, stmtCustomToDate);
+
+    const isFilterActive = stmtSelectedDatePreset !== 'ALL' ||
+        stmtSelectedTypes.length > 0 ||
+        stmtSelectedCategories.length > 0 ||
+        stmtSelectedSubcategories.length > 0 ||
+        stmtSelectedPayees.length > 0;
+
     const filtered = cachedStmtData.transactions.filter(txn => {
+        // Date filter
+        if (dateRange.isValid && dateRange.start !== null && dateRange.end !== null) {
+            const txMillis = parseTxnDateToMillis(txn.date);
+            if (txMillis < dateRange.start || txMillis > dateRange.end) {
+                return false;
+            }
+        } else if (!dateRange.isValid && stmtSelectedDatePreset === 'CUSTOM') {
+            return false;
+        }
         // Type filter (OR within group, AND between groups)
         if (stmtSelectedTypes.length > 0 && !stmtSelectedTypes.includes(txn.transactionType)) {
             return false;
@@ -592,7 +811,7 @@ function renderStmtTransactions() {
         // Subcategory filter (OR within group, AND between groups)
         if (stmtSelectedSubcategories.length > 0) {
             const matchesSub = stmtSelectedSubcategories.some(s => {
-                if (s === '__NO_SUBCATEGORY__' || s === 'No Subcategory') {
+                if (s === '__NO_SUBCATEGORY__' || s === 'No Subcategory' || s === '[No Subcategory]') {
                     return !txn.subcategory || txn.subcategory.trim() === '';
                 }
                 return txn.subcategory === s;
@@ -606,9 +825,57 @@ function renderStmtTransactions() {
         return true;
     });
 
+    const filteredBalMap = {};
+    let filteredTotalImpact = 0;
+
+    if (isFilterActive) {
+        const sortedAsc = [...filtered].sort((a, b) => {
+            const dA = parseTxnDateToMillis(a.date);
+            const dB = parseTxnDateToMillis(b.date);
+            if (dA !== dB) return dA - dB;
+            if (a.time !== b.time) return (a.time || '').localeCompare(b.time || '');
+            return (a.rowId || '').localeCompare(b.rowId || '');
+        });
+
+        let runningFilt = 0.0;
+        sortedAsc.forEach(txn => {
+            let sem = 0.0;
+            if (txn.semanticAmount !== undefined) {
+                sem = txn.semanticAmount;
+            } else {
+                const absVal = Math.abs(txn.amount);
+                if (txn.transactionType === 'Transfer') {
+                    sem = (txn.toAccount === cachedStmtData.accountName) ? absVal : -absVal;
+                } else if (txn.transactionType === 'Income') {
+                    sem = txn.amount < 0 ? -absVal : absVal;
+                } else if (txn.transactionType === 'Expense') {
+                    sem = -absVal;
+                } else {
+                    sem = txn.amount >= 0 ? absVal : -absVal;
+                }
+            }
+            runningFilt += sem;
+            filteredBalMap[txn.rowId] = runningFilt;
+        });
+        filteredTotalImpact = runningFilt;
+    }
+
     filtered.forEach(txn => {
-        const isPos = txn.semanticAmount >= 0;
+        const isPos = txn.semanticAmount !== undefined ? txn.semanticAmount >= 0 : (txn.amount >= 0 || txn.transactionType === 'Income');
         const tr = document.createElement('tr');
+
+        let balanceHtml = `<strong>${formatCurrency(txn.runningBalance)}</strong>`;
+        if (isFilterActive && filteredBalMap[txn.rowId] !== undefined) {
+            const fBal = filteredBalMap[txn.rowId];
+            const fColor = fBal >= 0 ? '#2e7d32' : '#c62828';
+            balanceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 0.15rem;">
+                    <span style="font-size: 0.8rem; color: #475569;">Account: <strong>${formatCurrency(txn.runningBalance)}</strong></span>
+                    <span style="font-size: 0.8rem; color: #0288d1; font-weight: 700;">Filtered: <strong style="color: ${fColor}">${formatCurrency(fBal)}</strong></span>
+                </div>
+            `;
+        }
+
         tr.innerHTML = `
             <td>${escapeHtml(txn.date)} ${escapeHtml(txn.time)}</td>
             <td>${escapeHtml(txn.description)}</td>
@@ -616,7 +883,7 @@ function renderStmtTransactions() {
             <td>${escapeHtml(txn.subcategory || '—')}</td>
             <td><span class="account-type-tag">${escapeHtml(txn.transactionType)}</span></td>
             <td style="color: ${isPos ? '#2e7d32' : '#c62828'}; font-weight: 700;">${isPos ? '+' : '−'} ${formatCurrency(Math.abs(txn.amount))}</td>
-            <td><strong>${formatCurrency(txn.runningBalance)}</strong></td>
+            <td>${balanceHtml}</td>
             <td>
                 <div class="action-buttons">
                     <button onclick="viewTxnDetails('${escapeJs(txn.rowId)}')" class="btn-action-sm btn-view">View</button>
@@ -630,7 +897,11 @@ function renderStmtTransactions() {
 
     const resultCountEl = document.getElementById('stmtResultCountText');
     if (resultCountEl) {
-        resultCountEl.textContent = `Showing ${filtered.length} of ${cachedStmtData.transactions.length} transactions`;
+        if (isFilterActive) {
+            resultCountEl.textContent = `Showing ${filtered.length} of ${cachedStmtData.transactions.length} transactions | Filtered Impact: ${formatCurrency(filteredTotalImpact)}`;
+        } else {
+            resultCountEl.textContent = `Showing ${filtered.length} of ${cachedStmtData.transactions.length} transactions`;
+        }
     }
 }
 
@@ -688,7 +959,7 @@ async function loadTransactions(page) {
     const subcategoryStr = selectedSubcategories.join(',');
     const payeeStr = selectedPayees.join(',');
 
-    const url = `/api/transactions?page=${currentTxnPage}&pageSize=20&search=${encodeURIComponent(search)}&account=${encodeURIComponent(accountStr)}&category=${encodeURIComponent(categoryStr)}&subcategory=${encodeURIComponent(subcategoryStr)}&payee=${encodeURIComponent(payeeStr)}&transactionType=${encodeURIComponent(typeStr)}`;
+    const url = `/api/transactions?page=${currentTxnPage}&pageSize=20&search=${encodeURIComponent(search)}&account=${encodeURIComponent(accountStr)}&category=${encodeURIComponent(categoryStr)}&subcategory=${encodeURIComponent(subcategoryStr)}&payee=${encodeURIComponent(payeeStr)}&transactionType=${encodeURIComponent(typeStr)}&dateFilter=${encodeURIComponent(selectedDatePreset)}&fromDate=${encodeURIComponent(customFromDate)}&toDate=${encodeURIComponent(customToDate)}`;
 
     try {
         const res = await fetch(url);
@@ -977,18 +1248,20 @@ function filterPopoverList(filterType, searchVal) {
 }
 
 function updateFilterUI() {
+    updateDateTriggerText('btnDateTrigger', selectedDatePreset);
     updateTriggerText('btnTypeTrigger', selectedTypes, 'Type');
     updateTriggerText('btnAccountTrigger', selectedAccounts, 'Account');
     updateTriggerText('btnCategoryTrigger', selectedCategories, 'Category');
 
-    const subDisplayNames = selectedSubcategories.map(s => s === '__NO_SUBCATEGORY__' ? '[No Subcategory]' : s);
+    const subDisplayNames = selectedSubcategories.map(s => (s === '__NO_SUBCATEGORY__' || s === 'No Subcategory' || s === '[No Subcategory]') ? 'No Subcategory' : s);
     updateTriggerText('btnSubcategoryTrigger', subDisplayNames, 'Subcategory');
 
     updateTriggerText('btnPayeeTrigger', selectedPayees, 'Payee / Payer');
 
     const searchEl = document.getElementById('txnSearchInput') || document.getElementById('txnSearch');
     const search = searchEl ? searchEl.value.trim() : '';
-    const hasActiveFilters = selectedTypes.length > 0 ||
+    const hasActiveFilters = selectedDatePreset !== 'ALL' ||
+        selectedTypes.length > 0 ||
         selectedAccounts.length > 0 ||
         selectedCategories.length > 0 ||
         selectedSubcategories.length > 0 ||
@@ -1005,19 +1278,31 @@ function updateTriggerText(triggerId, selectedArray, defaultLabel) {
     const trigger = document.getElementById(triggerId);
     if (!trigger) return;
 
-    if (!selectedArray || selectedArray.length === 0) {
-        trigger.textContent = `${defaultLabel}: All`;
-        trigger.classList.remove('has-selection');
-    } else if (selectedArray.length === 1) {
-        trigger.textContent = `${defaultLabel}: ${selectedArray[0]}`;
-        trigger.classList.add('has-selection');
+    let text = `${defaultLabel}: All`;
+    if (selectedArray && selectedArray.length === 1) {
+        text = `${defaultLabel}: ${selectedArray[0]}`;
+    } else if (selectedArray && selectedArray.length > 1) {
+        text = `${defaultLabel}: ${selectedArray.length} selected`;
+    }
+
+    const firstSpan = trigger.querySelector('span:not(.arrow)');
+    if (firstSpan) {
+        firstSpan.textContent = text;
     } else {
-        trigger.textContent = `${defaultLabel}: ${selectedArray.length} selected`;
-        trigger.classList.add('has-selection');
+        trigger.innerHTML = `<span>${escapeHtml(text)}</span> <span class="arrow">▾</span>`;
+    }
+
+    if (selectedArray && selectedArray.length > 0) {
+        trigger.classList.add('has-selections', 'has-selection');
+    } else {
+        trigger.classList.remove('has-selections', 'has-selection');
     }
 }
 
 function clearAllFilters() {
+    selectedDatePreset = 'ALL';
+    customFromDate = '';
+    customToDate = '';
     selectedTypes = [];
     selectedAccounts = [];
     selectedCategories = [];
@@ -1026,6 +1311,21 @@ function clearAllFilters() {
 
     const searchInput = document.getElementById('txnSearchInput') || document.getElementById('txnSearch');
     if (searchInput) searchInput.value = '';
+
+    const allRadio = document.querySelector('input[name="dateOpt"][value="ALL"]');
+    if (allRadio) allRadio.checked = true;
+
+    const fromInput = document.getElementById('inputFromDate');
+    if (fromInput) fromInput.value = '';
+    const toInput = document.getElementById('inputToDate');
+    if (toInput) toInput.value = '';
+
+    const box = document.getElementById('boxCustomDate');
+    if (box) box.style.display = 'none';
+    const err = document.getElementById('errCustomDate');
+    if (err) { err.style.display = 'none'; err.textContent = ''; }
+
+    document.querySelectorAll('#viewTransactions .popover-panel input[type="checkbox"]').forEach(cb => cb.checked = false);
 
     document.querySelectorAll('#viewTransactions .popover-panel input[type="checkbox"]').forEach(cb => cb.checked = false);
 
